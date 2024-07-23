@@ -1,0 +1,202 @@
+-- --[[ LiteLua Bytecode
+-- 	LiteLua is a bytecode intended to be an simple-to-implement VM written in Lua
+
+-- 	-- Specification
+-- 	VarArgs:
+-- 		For Instructions without a definate amount of arguments 0xFF is used to indicate the end of a var-arg list
+-- 	Literals
+-- 		Most Literals are incoded in a null-terminted string prefixed by a type byte
+-- 		[0x01] number
+-- 		[0x02] string
+-- 		[0x03] nil
+-- 		[0x04] bytes -- followed by two bytes defining the length 
+
+
+-- 	Instructions:
+-- 		Athrimic
+-- 		[0x10] ADD var1, var2, var3
+-- 		[0x11] SUB 		  ""
+-- 		[0x12] MUL		  ""
+-- 		[0x13] DIV		  ""
+		
+-- 		Control Flow
+-- 		[0x20] Call method, ...results, ...args
+-- 		[0x21] Return ...
+-- 		[0x22] Jump
+-- 		[0x23] Jumpif condition, label
+
+
+-- 		[0x30] FunctionDef name, ...args, ...instructions
+-- 		[0x31] FunctionEnd
+
+-- 		Example:
+-- 			\x30\x02__entry\0\xff\x20\x02print\0\xff\x02Hello, world!\0\x21\xff\x31
+-- 		Assembly:
+-- 			FunctionDef __entry, null
+-- 				Call print, null, "Hello, world!"
+-- 				Return null
+-- 			FunctionEnd
+-- 		Lua-Equivelent:
+-- 			function __entry()
+-- 				print("Hello, world!")
+-- 			end
+-- ]]
+-- 			--[[
+-- print("\x1B[=13h")
+
+-- --copy our _G to an _ENV
+-- for k, v in pairs(_G) do
+-- 	_ENV[k] = v
+-- end
+
+-- local function debug_printTable(t, tabs)
+-- 	local function literalize(v)
+-- 		if type(v) == "string" then
+-- 			return "\x1B[38:5:40m\"" .. v .. "\"\x1B[0m"
+-- 		end
+-- 		if type(v) == "number" then
+-- 			return "\x1B[38:5:202m" .. tostring(v) .. "\x1B[0m"
+-- 		end
+-- 		return tostring(v)
+-- 	end
+-- 	if not tabs then
+-- 		print("{"); tabs = 0;
+-- 	end
+-- 	for k, v in pairs(t) do
+-- 		if type(v) == "table" then
+-- 			print(string.rep("\t", tabs) .. k .. ": {")
+-- 			debug_printTable(v, tabs+1)
+-- 		else
+-- 			print(string.rep("\t", tabs) .. k .. ": " .. literalize(v))
+-- 		end
+-- 	end
+-- 	print(string.rep("\t", tabs) .. "}")
+-- end
+
+
+-- local function splitByDelim(s, delim)
+-- 	local t = {}
+-- 	for str in string.gmatch(s, delim) do
+-- 		table.insert(t, str)
+-- 	end
+-- 	return t
+-- end
+
+-- local function findNext(s, pattern, start)
+-- 	local i = string.find(s, pattern, start, true)
+-- 	return i;
+-- end
+
+-- local function parseVarArg(list)
+-- 	local args = {}
+-- 	while true do
+-- 		data_type = string.byte(list, 1)
+-- 		if data_type == 0xFF then
+-- 			break
+-- 		end
+-- 		if data_type == 0x01 then
+-- 			table.insert(args, tonumber(string.sub(list, 2, findNext(list, "\0", 2)-1)))
+-- 			list = string.sub(list, findNext(list, "\0", 2))
+-- 		elseif data_type == 0x02 then
+-- 			table.insert(args, string.sub(list, 2, findNext(list, "\0", 2)-1))
+-- 			list = string.sub(list, findNext(list, "\0", 2))
+-- 		elseif data_type == 0x03 then
+-- 			table.insert(args, nil)
+-- 			list = string.sub(list, 2)
+-- 		elseif data_type == 0x04 then
+-- 			local len = (string.byte(list, 2) << 8) | (string.byte(list, 3))
+-- 			table.insert(args, string.sub(list, 4, 4+len))
+-- 			list = string.sub(list, 4+len)
+-- 		elseif data_type == 0x0 then
+-- 			list = string.sub(list, 2)
+-- 		end
+-- 	end
+-- 	return args
+-- end
+
+-- ---@return  string | number | nil data, integer | nil endofdata
+-- local function parseArg(list, start)
+-- 	local data_type = string.byte(list, start)
+-- 	if data_type == 0x01 then
+-- 		return tonumber(string.sub(list, 1 + start, findNext(list, "\0", 1 + start)-1)), findNext(list, "\0", 1 + start)
+-- 	elseif data_type == 0x02 then
+-- 		return string.sub(list, 1 + start, findNext(list, "\0", 1 + start)-1), findNext(list, "\0", 1 + start)
+-- 	elseif data_type == 0x03 then
+-- 		return nil, 1 + start
+-- 	elseif data_type == 0x04 then
+-- 		local len = (string.byte(list, 1 + start) << 8) | (string.byte(list, 2 + start))
+-- 		return string.sub(list, 3 + start, 3 + len + start), 3 + len + start
+-- 	end
+-- end
+-- --[[
+-- 	{
+-- 		[name] = {
+-- 			pointer: int
+-- 			args: table<string>
+-- 		},
+-- 		...
+-- 	}
+-- ]]
+-- function registerFunctions(bytecodes)
+-- 	local functions = {}
+-- 	local i = 0
+-- 	while findNext(bytecodes, "\x30", i) do
+-- 		defLoc = findNext(bytecodes, "\x30", i)
+-- 		local name = string.sub(bytecodes, i+3, findNext(bytecodes, "\0", i+1)-1)
+-- 		local j = findNext(bytecodes, "\xff", i)
+-- 		local args = splitByDelim(string.sub(bytecodes, defLoc+1, j), "\0")
+-- 		functions[name] = {
+-- 			pointer = j+1,
+-- 			args = args
+-- 		}
+-- 		i = findNext(bytecodes, "\x31", i)
+-- 	end
+-- 	return functions
+-- end
+-- function execute_bytecode(bytecode)
+-- 	local functions = registerFunctions(bytecode)
+-- 	assert(functions["__entry"], "No entry point defined")
+-- 	local PC, RAStack = functions["__entry"].pointer, {};
+-- 	while true do
+-- 		local variables = {}
+-- 		local opcode = string.byte(bytecode, PC)
+-- 		if opcode == 0x20 then
+-- 			local fn, next = parseArg(bytecode, PC+1)
+-- 			local returns = parseVarArg(string.sub(bytecode, next, findNext(bytecode, "\xff", next)))
+-- 			next = findNext(bytecode, "\xff", next)
+-- 			local args = parseVarArg(string.sub(bytecode, next+1, findNext(bytecode, "\xff", next+1)))
+-- 			next = findNext(bytecode, "\xff", next+1)
+-- 			if functions[fn] then
+-- 				local oldPC = PC
+-- 				PC = functions[fn].pointer
+-- 				RAStack[#RAStack+1] = oldPC
+-- 			else
+-- 				--check if it's a builtin function
+-- 				path = splitByDelim(fn, "%.")
+-- 				if #path == 0 then
+-- 					if _ENV[fn] then
+-- 						ret = table.pack(_ENV[fn](table.unpack(args)))
+-- 						for i=1, #returns do
+-- 							variables[returns[i]] = ret[i]
+-- 						end
+-- 					else
+-- 						error("Function " .. fn .. " not found")
+-- 					end
+-- 				else
+-- 					local obj = _ENV
+-- 					for i = 1, #path-1 do
+-- 						obj = obj[path[i]]
+-- 					end
+-- 					if obj[path[#path]] then
+-- 						ret = table.pack(obj[path[#path]](table.unpack(args)))
+-- 					else
+-- 						error("Function " .. fn .. " not found")
+-- 					end
+-- 				end
+-- 			end
+-- 			PC = next + 1
+-- 		end
+-- 	end
+-- end
+
+-- execute_bytecode("\x30\x02__entry\0\xff\x20\x02print\0\xff\x02Hello, world!\0\xff\x21\xff\x31")
