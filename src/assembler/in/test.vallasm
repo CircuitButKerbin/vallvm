@@ -1,0 +1,12 @@
+fnDef init:				;\x2A\x08init\0\x01\0\0
+	push "Hello, world!";\x16\x05\x0D\x00Hello, world!
+	invoke "print", 1, 0;\x28\x08print\0\x01\x01\0\x01\0\0
+	ret			        ;\x21\0
+db 0,0
+fnDef onTick:					  ;\x2A\x08onTick\0\x01\0\0
+	push 1						  ;\x01\x01\x01\0
+	invoke "getBool", 1, 1	      ;\x28\x08getBool\0\x01\x01\0\x01\x01\0
+	jncr skp					  ;\x27\x01\x2D\x00 -- 4 bytes
+	push "The screen was touched!";\x01\x05\x17\x00The screen was touched! -- 27 bytes
+ 	invoke "print", 1, 0		  ;\x28\x08print\0\x01\x01\0\x01\0\0 -- 14 bytes
+skp: ret							  ;\x21\0
