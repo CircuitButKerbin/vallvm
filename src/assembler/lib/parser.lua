@@ -93,10 +93,6 @@ local function split(str, sep)
 	return fields
 end
 
-local function trim (s)
-	return (string.gsub(s, "^%s*(.-)%s*$", "%1"))
-end
-
 ---@class operand
 ---@field type string
 ---@field value any
@@ -108,6 +104,94 @@ end
 ---@field name string
 ---@field opcode number
 
+local function parseOperands(operands) 
+	local escString = {}
+	local next = 1
+	while operands:find("%b\"\"", next) do
+		_, next = operands:find("%b\"\"", next)
+		local str = operands:match("%b\"\"")
+		local _str = str:gsub("%%", "%%%1")
+		operands = operands:gsub(_str, string.format("STR_%02X", #escString + 1))
+		str = str:gsub("\"", "")
+		escString[#escString+1] = str
+	end
+	local list = split(operands, ", ")
+	for i=1, (#escString > 0 and #escString or 1) do
+		for j=1, #list do
+			--go ahead and assign types
+			local tmp = {}
+			if (list[j]:match("r%d") and not tmp.type) then
+				tmp.type = "register"
+				tmp.value = tonumber(list[j]:match("%d"))
+			end
+			if (list[j] == string.format("STR_%02X", i) and not tmp.type) then
+				list[j] = escString[i]
+				tmp.type = "string"
+				tmp.value = escString[i]
+			end
+			if (list[j]:match("%-?%d*%.?%d+") and not tmp.type) then
+				tmp.type = "number"
+				tmp.value = tonumber(list[j]:match("%-?%d*%.?%d+"))
+			end
+			if (list[j]:match("0x%x+") and not tmp.type) then
+				tmp.type = "hex"
+				tmp.value = tonumber(list[j]:match("0x%x+"))
+			end
+			if (list[j]:match("[%w_]:$") and not tmp.type) then
+				tmp.type = "label"
+				tmp.value = list[j]:match("[%w_]+")
+			end
+			if (list[j]:match("[%w_]+") and not tmp.type) then
+				tmp.type = "label"
+				tmp.value = list[j]
+			end
+			list[j] = tmp
+		end
+	end
+	return list
+end
+
+-- label instruction "string with, fake second", real second, real third
+
+local function parseInstruction(s)
+	local opi, opj = s:find("^%w+")
+	local operation = s:sub(opi, opj)
+	local operands = s:sub(opj+1, #s)
+	operation = operation:gsub("^%s*(.-)%s*$", "%1")
+	operands = operands:gsub("^%s*(.-)%s*$", "%1")
+	local instruction = {
+		type = "instruction",
+		name = operation:upper(),
+		opcode = instructionmap[operation:lower()],
+		operands = operands ~= "" and parseOperands(operands) or {},
+	}
+	return instruction
+end
+
+local function parseLine(line, linenumber)
+	if (line:find(";")) then
+		line = line:sub(1, select(1, line:find(";"))-1)
+	end
+	local label = ""
+	line = line:gsub("^%s*(.-)%s*$", "%1")
+	if (line:find("^%w+:")) then
+		label = line:sub(line:find("^%w+:"))
+		label = label:gsub(":", "")
+		line = line:sub(select(-1, line:find("^%w+:"))+1, #line)
+	end
+	local instruction = parseInstruction(line:gsub("^%s*(.-)%s*$", "%1"))
+	instruction.line = linenumber
+	if #label > 0  then
+		return {
+			type = "label",
+			name = label,
+			instruction = instruction
+		}
+	else
+		return instruction;
+	end
+end
+
 ---@param input string
 ---@param args table<any>
 ---@return table<instruction>
@@ -117,94 +201,10 @@ local function parseVallASM (input, args)
 	--first pass
 	local lines = split(input, "\n")
 	for i, line in ipairs(lines) do
-		line = line:gsub(";.*", "")
-		line = trim(line)
-		local operation = line:match("%S+"):lower()
-		local function getOperand(s) 
-			local operandList = s:sub(select(1,s:find(" ")+1), #line)
-			local escString = {}
-			local next = 1
-			while operandList:find("%b\"\"", next) do
-				_, next = operandList:find("%b\"\"", next)
-				local str = operandList:match("%b\"\"")
-				operandList = operandList:gsub(str, string.format("STR_%02X", #escString + 1))
-				str = str:gsub("\"", "")
-				escString[#escString+1] = str
-			end
-			local list = split(operandList, ", ")
-			for i=1, (#escString > 0 and #escString or 1) do
-				for j=1, #list do
-					--go ahead and assign types
-					local tmp = {}
-					if (list[j]:match("r%d") and not tmp.type) then
-						tmp.type = "register"
-						tmp.value = tonumber(list[j]:match("%d"))
-					end
-					if (list[j] == string.format("STR_%02X", i) and not tmp.type) then
-						list[j] = escString[i]
-						tmp.type = "string"
-						tmp.value = escString[i]
-					end
-					if (list[j]:match("%-?%d*%.?%d+") and not tmp.type) then
-						tmp.type = "number"
-						tmp.value = tonumber(list[j]:match("%-?%d*%.?%d+"))
-					end
-					if (list[j]:match("0x%x+") and not tmp.type) then
-						tmp.type = "hex"
-						tmp.value = tonumber(list[j]:match("0x%x+"))
-					end
-					if (list[j]:match("[%w_]:$") and not tmp.type) then
-						tmp.type = "label"
-						tmp.value = list[j]:match("[%w_]+")
-					end
-					if (list[j]:match("[%w_]+") and not tmp.type) then
-						tmp.type = "label"
-						tmp.value = list[j]
-					end
-					list[j] = tmp
-				end
-			end
-			return list
+		if (line) then
+			parsed[#parsed+1] = parseLine(line, i)
+			print(line)
 		end
-		local function parseInstruction(s) 
-			assert(instructionmap[s], string.format("Unknown instruction \'%s\'at line %d", s,i))
-			local instruction = {
-				type = "instruction",
-				name = s:upper(),
-				opcode = instructionmap[s:lower()],
-				operands = line:find(" ") and getOperand(line) or {},
-				line = i
-			}
-			return instruction
-		end
-
-		if (instructionmap[operation]) then
-			parsed[#parsed+1] = parseInstruction(operation)
-			line = ""
-		end
-		
-		if (operation:match("[%w_]:$")) then
-		--label
-			local label = {
-				type = "label",
-				name = operation:match("[%w_]+"),
-				line = i,
-			}
-			if (line:find(" ")) then
-				local instruction = line:sub(select(1,line:find(" ")+1), #line)
-				label.instruction = parseInstruction(instruction)
-			end
-			parsed[#parsed+1] = label
-			line = "";
-		end
-		--directive
-		if (operation == "db") then
-			--#TODO
-			line = ""
-		end
-		--end directive
-		print(line)
-		assert(#line == 0, string.format("Maliformed line on line %d", i))
 	end
 	return parsed
 end

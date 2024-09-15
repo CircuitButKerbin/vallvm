@@ -2,7 +2,7 @@ local inputDir = "C:\\Users\\minec\\git\\VallVM\\src\\assembler\\in"
 local outputDir = "C:\\Users\\minec\\git\\VallVM\\src\\assembler\\out"
 local parser = require("src.assembler.lib.parser")
 local h = io.open(inputDir .. "\\test.vallasm", "r")
-local function formatprimative(v)
+local function formatprimative(v, bin)
 	local redish = "\x1B[38;5;196m"
 	local orange = "\x1B[38;5;136m"
 	local green = "\x1B[38;5;2m"
@@ -14,7 +14,7 @@ local function formatprimative(v)
 			local esc = green .. "\"" .. reset
 			for i=1, #v do
 				
-				if (string.char(v:byte(i)):match('[^ -~\n\t]')) then
+				if (string.char(v:byte(i)):match('[^ -~]') or bin) then
 					esc = esc .. redish .. string.format("\\x%02X", v:byte(i)) .. reset
 				else
 					esc = esc .. green .. string.char(v:byte(i)) .. reset
@@ -136,7 +136,7 @@ local assemblers =  {
 		local operand;
 		if (instruction.operands[1].type == "register") then
 			operand = packoperand(instruction.operands[1], "register")
-		elseif (instruction.operands[1].type == "varaible") then
+		elseif (instruction.operands[1].type == "string") then
 			operand = packoperand(instruction.operands[1], "varaible")
 		end
 		return "\x16" .. operand
@@ -147,7 +147,7 @@ local assemblers =  {
 		local operand;
 		if (instruction.operands[1].type == "register") then
 			operand = packoperand(instruction.operands[1], "register")
-		elseif (instruction.operands[1].type == "varaible") then
+		elseif (instruction.operands[1].type == "string") then
 			operand = packoperand(instruction.operands[1], "varaible")
 		end
 		return "\x17" .. operand
@@ -273,6 +273,9 @@ local function assembleParsed(parsed)
 			chunk = ""
 		end
 	end
+	if (#chunk > 0) then
+		chunks[#chunks+1] = chunk
+	end
 	local start = 0
 	-- resolve labels
 	for i, v in ipairs(chunks) do
@@ -285,6 +288,9 @@ local function assembleParsed(parsed)
 					local jloc
 					if (v.unfinished:find("URELJ")) then
 						jloc = label - start
+						if (jloc < 0) then
+							jloc = jloc - 14
+						end
 					else
 						jloc = label
 					end
@@ -319,5 +325,5 @@ assert(h, "Could not open file")
 Parsed = parser.parseVallASM(h:read("all"), {})
 prettyPrintTable(Parsed)
 local assembled = assembleParsed(Parsed)
-print(formatprimative(assembled))
+print(formatprimative(assembled, true))
 h:close();

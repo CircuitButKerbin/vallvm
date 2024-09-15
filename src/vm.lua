@@ -4,16 +4,17 @@ local processor_state = {
 	stack = {},
 	register = {},
 	program_counter = 1,
-	program = "*\x08init\x00\x01\x05\x0D\x00Hello, world!(\x08print\x00\x01\x01\x00\x01\x00\x00!*\x08onTick\x00\x01\x01\x01\x00(\x08getBool\x00\x01\x01\x00\x01\x01\x00'\x02/\x00\x00\x00\x01\x05\x17\x00The screen was touched!(\x08print\x00\x01\x01\x00\x01\x00\x00!",
+	program = "\x21\x2A\x08\x69\x6E\x69\x74\x00\x01\x05\x0D\x00\x48\x65\x6C\x6C\x6F\x2C\x20\x77\x6F\x72\x6C\x64\x21\x28\x08\x70\x72\x69\x6E\x74\x00\x01\x01\x00\x01\x00\x00\x21\x2A\x08\x6F\x6E\x54\x69\x63\x6B\x00\x01\x01\x01\x00\x28\x08\x67\x65\x74\x42\x6F\x6F\x6C\x00\x01\x01\x00\x01\x01\x00\x27\x02\x2F\x00\x00\x00\x01\x05\x17\x00\x54\x68\x65\x20\x73\x63\x72\x65\x65\x6E\x20\x77\x61\x73\x20\x74\x6F\x75\x63\x68\x65\x64\x21\x28\x08\x70\x72\x69\x6E\x74\x00\x01\x01\x00\x01\x00\x00\x01\x05\x19\x00\x54\x68\x65\x20\x73\x63\x72\x65\x65\x6E\x20\x77\x61\x73\x6E\x27\x74\x20\x74\x6F\x75\x63\x68\x65\x64\x28\x08\x70\x72\x69\x6E\x74\x00\x01\x01\x00\x01\x00\x00\x01\x05\x0A\x00\x4C\x6F\x6F\x70\x20\x74\x65\x73\x74\x3A\x28\x08\x70\x72\x69\x6E\x74\x00\x01\x01\x00\x01\x00\x00\x01\x01\x01\x00\x17\x08\x58\x00\x01\x01\x01\x00\x16\x08\x58\x00\x03\x17\x08\x58\x00\x01\x05\x11\x00\x4C\x6F\x6F\x70\x20\x69\x74\x65\x72\x61\x74\x69\x6F\x6E\x20\x25\x64\x16\x08\x58\x00\x28\x08\x73\x74\x72\x69\x6E\x67\x2E\x66\x6F\x72\x6D\x61\x74\x00\x01\x02\x00\x01\x01\x00\x28\x08\x70\x72\x69\x6E\x74\x00\x01\x01\x00\x01\x00\x00\x01\x01\x0A\x00\x16\x08\x58\x00\x12\x26\x02\xAD\xFF\xFF\xFF\x21",
 	globals = {},
 	functions = {},
-	return_address_stack = {}
+	return_address_stack = {},
+	cycles = 0,
 }
 
 local _procDebug = {
 	trace = {},
 	pushToExecTrace = function (s, instructionName, address)
-		s.trace[address] = fmt("t+%d | %s ", processor_state.ticks, instructionName)
+		s.trace[address] = fmt("t+%d c+%d | %s ", processor_state.ticks, processor_state.cycles, instructionName)
 	end,
 	dumpProgram = function (highlight_location, highlight_length)
 		local program = processor_state.program
@@ -25,14 +26,14 @@ local _procDebug = {
 				buf(fmt("%08X | ", i-1))
 			end
 			if (i == highlight_location) then
-				buf(fmt("\x1B[31m%02X", string.byte(program, i)))
-				asciirep = asciirep .. "\x1B[31m".. string.char(string.byte(program, i)):gsub("[^ -~\n\t]", ".")
+				buf(fmt("\x1B[31m%02X", string.byte(program, i)) .. (highlight_length==1 and "\x1B[0m" or ""))
+				asciirep = asciirep .. "\x1B[31m".. string.char(string.byte(program, i)):gsub("[^ -~]", ".") .. (highlight_length==1 and "\x1B[0m" or "")
 			elseif (i == highlight_location + highlight_length) then
 				buf(fmt("\x1B[0m%02X", string.byte(program, i)))
-				asciirep = asciirep .. "\x1B[0m".. string.char(string.byte(program, i)):gsub("[^ -~\n\t]", ".")
+				asciirep = asciirep .. "\x1B[0m".. string.char(string.byte(program, i)):gsub("[^ -~]", ".")
 			else
 				buf(fmt("%02X", string.byte(program, i)))
-				asciirep = asciirep .. string.char(string.byte(program, i)):gsub("[^ -~\n\t]", ".")
+				asciirep = asciirep .. string.char(string.byte(program, i)):gsub("[^ -~]", ".")
 			end
 			if (i % 16 == 0) then
 				buf(" | ")
@@ -53,6 +54,28 @@ local _procDebug = {
 		print(buffer)
 	end
 }
+
+
+local function ResolveGlobalExtern(externName)
+	local function split(str, sep)
+		local sep, fields = sep or ":", {}
+		local pattern = string.format("([^%s]+)", sep)
+		str:gsub(pattern, function(c) fields[#fields+1] = c end)
+		return fields
+	end
+	if (externName:match("%.")) then
+		local path = split(externName, "%.")
+		local obj = _ENV
+		for i=1, #path do
+			obj = obj[path[i]]
+			if (not obj) then
+				return nil
+			end
+		end
+		return obj
+	end
+	return _ENV[externName]
+end
 
 ---@enum OperandType
 
@@ -141,13 +164,16 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 	function WriteOperand(v, t, _, n)
 		if (t == 8) then
 			state.globals[n] = v
+			return
 		end
 		if (t == 9) then
 			state.register[n] = v
+			return
 		end
 		error(fmt("Attempted to write to operand %d [PC:%08x]", t, state.program_counter or 0xDEADBEEF))
 	end
 	function ExecuteInstruction(bytecode, location, exitOnReturn)
+		processor_state.cycles = processor_state.cycles + 1
 		local op = string.byte(bytecode, location)
 		if (op==1) then -- PUSH
 			_procDebug:pushToExecTrace("PUSH", location)
@@ -223,10 +249,10 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 			state.program_counter = location + len + 1
 		elseif (op==0x17) then -- STORE
 			_procDebug:pushToExecTrace("STORE", location)
-			local v, t, _, n = ParseOperand(bytecode, location+1)
+			local v, t, len, n = ParseOperand(bytecode, location+1)
 			assert(t == 8 or t==9, fmt("Store requires a global variable name or register, got type %d", t))
-			WriteOperand(table.remove(state.stack), t, _, n)
-			state.program_counter = location + 1
+			WriteOperand(table.remove(state.stack, #state.stack), t, _, n)
+			state.program_counter = location + len + 1
 		elseif (op==0x18) then -- MOVE
 			_procDebug:pushToExecTrace("MOVE", location)
 			local v1, t1, len, n1 = ParseOperand(bytecode, location+1)
@@ -252,7 +278,7 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 			_procDebug:pushToExecTrace("JUMP", location)
 			local v, t, len = ParseOperand(bytecode, location+1)
 			assert(t == 1 or t == 2, fmt("Jumps requires a i32 or i16, got type %d", t))
-			local stackState = state.stack[#state.stack]
+			local stackState = table.remove(state.stack, #state.stack)
 			local cond = (op == 0x22 or op == 0x25) or ((op == 0x23 or op == 0x26) and stackState) or ((op == 0x24 or op == 0x27) and not stackState)
 			cut(state.stack, 1)
 			if (cond) then
@@ -264,7 +290,8 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 			_procDebug:pushToExecTrace("INVOKE", location)
 			local _, t, len, externName = ParseOperand(bytecode, location+1)
 			assert(t == 8, fmt("invoke requires a variable name, got type %d", t))
-			assert(_ENV[externName], fmt("Extern function %s not found", externName))
+			local fn = ResolveGlobalExtern(externName)
+			assert(fn, fmt("Extern function %s not found", externName))
 			local argCount, t, len2 = ParseOperand(bytecode, location + 1 + len)
 			assert(t == 1 or t == 2, fmt("Extern function argument count must be of integer type %d", t))
 			local args = {}
@@ -272,7 +299,7 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 				args[i] = state.stack[#state.stack - argCount + i]
 			end
 			cut(state.stack, argCount)
-			local ret = table.pack(_ENV[externName](table.unpack(args)))
+			local ret = table.pack(fn(table.unpack(args)))
 			local returns, t, len3 = ParseOperand(bytecode, location+1 + len + len2)
 			assert(t == 1 or t == 2, fmt("Extern function return count must be of integer type %d", t))
 			for i=1, returns do
