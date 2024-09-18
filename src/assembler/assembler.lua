@@ -1,7 +1,6 @@
-local inputDir = "C:\\Users\\minec\\git\\VallVM\\src\\assembler\\in"
-local outputDir = "C:\\Users\\minec\\git\\VallVM\\src\\assembler\\out"
-local parser = require("src.assembler.lib.parser")
-local h = io.open(inputDir .. "\\test.vallasm", "r")
+local inputDir = "./in"
+local outputDir = "./out"
+local parser = require("lib.parser")
 local function formatprimative(v, bin)
 	local redish = "\x1B[38;5;196m"
 	local orange = "\x1B[38;5;136m"
@@ -321,9 +320,14 @@ local function assembleParsed(parsed)
 	return chunk
 end
 
-assert(h, "Could not open file")	
+local h = io.open(inputDir .. "/test.vallasm", "r")
+assert(h, "Could not open input file")	
 Parsed = parser.parseVallASM(h:read("all"), {})
 prettyPrintTable(Parsed)
 local assembled = assembleParsed(Parsed)
+h:close()
+local h = io.open(outputDir .. "/test.val", "wb")
+assert(h, "Could not open output file")
+h:write(assembled)
 print(formatprimative(assembled, true))
 h:close();
