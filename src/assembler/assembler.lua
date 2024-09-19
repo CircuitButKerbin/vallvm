@@ -2,6 +2,11 @@ local VERSION = "0.0.1"
 local inputDir = "./in"
 local outputDir = "./out"
 local parser = require("lib.parser")
+---returns a string with the type formatted with ANSI color codes;
+---@param v any value to format
+---@param bin any 
+---@return string
+---@overload fun(v: string): string
 local function formatprimative(v, bin)
 	local redish = "\x1B[38;5;196m"
 	local orange = "\x1B[38;5;136m"
@@ -30,18 +35,35 @@ local function formatprimative(v, bin)
 	elseif (type(v) == "boolean") then
 		return orange .. tostring(v) .. reset
 	elseif (type(v) == "function") then
-		return pink .. "function" .. reset
+		local fstr = debug.getinfo(v).what
+		if (fstr == "C") then
+			fstr = "fn<C>"
+		else
+			fstr = "fn<Lua> " .. debug.getinfo(v).source .. ":" .. debug.getinfo(v).linedefined
+		end
+		return pink .. fstr .. reset
+	elseif (type(v) == "userdata") then
+		return pink .. "userdata" .. reset
+	elseif (type(v) == "thread") then	
+		return pink .. "thread" .. reset
 	else
 		return tostring(v)
 	end
 end
-local function prettyPrintTable (table, indent)
+local function prettyPrintTable (T, indent, displayed)
 	indent = indent or 0
+	local displayed = displayed or {}
 	_ = (indent==0) and print(string.rep("    ", indent) .. "{")
-	for k, v in pairs(table) do
-		if (type(v) == "table") then
-			print(string.rep("    ", indent) .. string.format("\t[%s] = {", formatprimative(k)))
-			prettyPrintTable(v, indent + 2)
+	for k, v in pairs(T) do
+		if (T == v) then
+			print(string.rep("    ", indent) .. string.format("\t[%s] = \x1B[31m<recursion>\x1B[0m", formatprimative(k)))
+		elseif (type(v) == "table") then
+			if (displayed[v]) then
+				print(string.rep("    ", indent) .. string.format("\t[%s] = \x1B[31m<recursion>\x1B[0m", formatprimative(k)))
+			else
+				displayed[v] = true
+				prettyPrintTable(v, indent + 2, displayed)
+			end
 		else
 			print(string.rep("    ", indent) .. string.format("\t[%s] = %s", formatprimative(k), formatprimative(v)))
 		end
@@ -320,7 +342,7 @@ local function assembleParsed(parsed)
 	assert(#chunks==0, "Failed to resolve all labels")
 	return chunk
 end
-
+--- Function for calling stuff when ran with --debug_test
 local function dbg()
 	local h = io.open(inputDir .. "/test.vallasm", "r")
 	assert(h, "Could not open input file")	
@@ -332,6 +354,7 @@ local function dbg()
 	assert(h, "Could not open output file")
 	h:write(assembled)
 	print(formatprimative(assembled, true))
+	prettyPrintTable(_G)
 	h:close();
 end
 
@@ -376,7 +399,7 @@ function Main()
 	local Parsed = parser.parseVallASM(h:read("all"), {})
 	h:close()
 	local assembled = assembleParsed(Parsed)
-	local h = io.open(outputfile, "wb")
+	h = io.open(outputfile, "wb")
 	assert(h, "Could not open output file")
 	h:write(assembled)
 	h:close()
