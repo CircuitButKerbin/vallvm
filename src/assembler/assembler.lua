@@ -1,3 +1,4 @@
+local VERSION = "0.0.1"	
 local inputDir = "./in"
 local outputDir = "./out"
 local parser = require("lib.parser")
@@ -320,14 +321,66 @@ local function assembleParsed(parsed)
 	return chunk
 end
 
-local h = io.open(inputDir .. "/test.vallasm", "r")
-assert(h, "Could not open input file")	
-Parsed = parser.parseVallASM(h:read("all"), {})
-prettyPrintTable(Parsed)
-local assembled = assembleParsed(Parsed)
-h:close()
-local h = io.open(outputDir .. "/test.val", "wb")
-assert(h, "Could not open output file")
-h:write(assembled)
-print(formatprimative(assembled, true))
-h:close();
+local function dbg()
+	local h = io.open(inputDir .. "/test.vallasm", "r")
+	assert(h, "Could not open input file")	
+	Parsed = parser.parseVallASM(h:read("all"), {})
+	prettyPrintTable(Parsed)
+	local assembled = assembleParsed(Parsed)
+	h:close()
+	local h = io.open(outputDir .. "/test.val", "wb")
+	assert(h, "Could not open output file")
+	h:write(assembled)
+	print(formatprimative(assembled, true))
+	h:close();
+end
+
+
+function Main()
+	if (arg[1] == "-h" or arg[1] == "--help" or arg[1] == "-?" or arg[1] == nil) then
+		print("Usage: assembler.lua [options] file")
+		print("Options:")
+		print("\t--help\t\tDisplay this help message")
+		print("\t--version\tDisplay version information")
+		print("\t-o <file>\tOutput to file")
+		return
+	end
+	if (arg[1] == "--debug_test") then
+		dbg()
+		return
+	end
+	if (arg[1] == "--version") then
+		print(string.format("assembler.lua version %s\n%s", VERSION, _VERSION))
+		return
+	end
+	---@overload fun(key:string):any
+	local function getarg(key, isFlag)
+		for k, v in ipairs(arg) do
+			if (v == key) then
+				if (isFlag) then
+					return true
+				end
+				return arg[k+1]
+			end
+		end
+	end
+	local inputfile = arg[#arg]
+	local tmp = getarg("-o")
+	local outputfile = tmp and (tmp:match("/") and tmp or ("./out/" .. tmp)) or ("./out/" .. inputfile:gsub("%..*", ".val"))
+	if (not inputfile:match("/")) then
+		inputfile = "./in/" .. inputfile
+	end
+	print(string.format("Assembling %s to %s", inputfile, outputfile))
+	local h = io.open(inputfile, "r")
+	assert(h, "Could not open input file")
+	local Parsed = parser.parseVallASM(h:read("all"), {})
+	h:close()
+	local assembled = assembleParsed(Parsed)
+	local h = io.open(outputfile, "wb")
+	assert(h, "Could not open output file")
+	h:write(assembled)
+	h:close()
+end
+
+
+Main()
