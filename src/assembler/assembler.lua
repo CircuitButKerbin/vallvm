@@ -2,6 +2,7 @@ local VERSION = "0.0.1"
 local inputDir = "./in"
 local outputDir = "./out"
 local parser = require("lib.parser")
+local exception = require("lib.error")
 ---returns a string with the type formatted with ANSI color codes;
 ---@param v any value to format
 ---@param bin any 
@@ -81,11 +82,12 @@ end
 ---comment
 ---@param operand operand
 ---@return string, string
+---@throws assembler.compiler.InvalidOperandException, assembler.compiler.InvalidCastException
 local function packoperand(operand, cast)
 	if (operand.type == "nil") then
-		
+		--#TODO: implement nil
 	elseif (operand.type == "number") then
-		assert(cast == nil or cast == "i16" or cast == "i32" or cast == "f32", string.format("Cannot cast number to %s", cast))
+		Assert(cast == nil or cast == "i16" or cast == "i32" or cast == "f32", exception.new("assembler.compiler.InvalidCastException", string.format("Cannot cast number to %s", cast)))
 		if (cast == "i16" or (not cast and (32767 >= operand.value) and (operand.value  >= -32768) and math.floor(operand.value) == operand.value)) then
 			return "\x01" .. string.pack("i2", operand.value), "i16"
 		elseif (cast == "i32" or (not cast and (math.maxinteger >= operand.value) and (operand.value >= math.mininteger) and (math.floor(operand.value) == operand.value))) then
@@ -94,32 +96,34 @@ local function packoperand(operand, cast)
 			return "\x03" .. string.pack("f", operand.value), "f32"
 		end
 	elseif (operand.type == "string") then
-		assert(cast == nil or cast == "varaible", string.format("Cannot cast string to %s", cast))
+		Assert(cast == nil or cast == "varaible", exception.new("assembler.compiler.InvalidCastException", string.format("Cannot cast string to %s", cast)))
 		if (cast == "varaible") then
-			assert(not operand.value:match("\0"), string.format("Invalid varaible name"))
+			Assert(not operand.value:match("\0"), exception.new("assembler.compiler.InvalidOperandException", string.format("Operand type 0x08 cannot contain null characters")))
 			return "\x08" .. operand.value .. "\0", "varaible"
 		else
 			return "\x05" .. string.pack("i2", #operand.value).. operand.value, "string"
 		end
 	elseif (operand.type == "label") then
-		assert(cast == nil or cast == "varaible", string.format("Cannot cast label to %s", cast))
-		assert(not operand.value:match("\0"), string.format("Invalid varaible name"))
+		Assert(cast == nil or cast == "varaible", exception.new("assembler.compiler.InvalidCastException", string.format("Cannot cast label to %s", cast)))
+		Assert(not operand.value:match("\0"), exception.new("assembler.compiler.InvalidOperandException", string.format("Operand type 0x08 cannot contain null characters")))
 		return "\x08" .. operand.value .. "\0", "varaible"
 	elseif (operand.type == "register") then
-		assert(cast == nil or cast == "register", string.format("Cannot cast register to %s", cast))
-		assert(operand.value >= 0 and operand.value <= 31, string.format("Invalid register number"))
+		Assert(cast == nil or cast == "register", exception.new("assembler.compiler.InvalidCastException", string.format("Cannot cast register to %s", cast)))
+		Assert(operand.value >= 0 and operand.value <= 31, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid register number %d", operand.value)))
 		return string.char(0x40 | (operand.value & 0x1F)), "register"
 	else
-		error(string.format("Maliformed operand"))
+		Throw(exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid operand type %s", operand.type)))
 	end
-	error("type_not_implemented: " .. operand.type)
+	error("unreachable")
 end
 
 local assemblers =  {
 	---@type buildfn
 	["push"] =	function (instruction)
 		assert(#instruction.operands == 1, string.format("Invalid number of operands for push at line %d", instruction.line))
-		local operand = packoperand(instruction.operands[1])
+		local operand = Try({packoperand, instruction.operands[1]}, function(e)
+			Throw(exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid operand for push at line %d", instruction.line)))
+		end, nil)
 		return "\x01" .. operand
 	end,
 	---@type buildfn
@@ -299,6 +303,7 @@ local function assembleParsed(parsed)
 		chunks[#chunks+1] = chunk
 	end
 	local start = 0
+	prettyPrintTable(chunks)
 	-- resolve labels
 	for i, v in ipairs(chunks) do
 		if (type(v) == "table" and v.unfinished) then
@@ -323,7 +328,7 @@ local function assembleParsed(parsed)
 				end
 				label = label + #w
 			end
-			assert(found, string.format("Could not find label %s", key))
+			Throw(exception.new("assembler.compiler.MissingLabelException", string.format("Could not find label %s", key)))
 		end
 		start = start + #v
 	end
@@ -339,7 +344,7 @@ local function assembleParsed(parsed)
 			chunk = ""
 		end
 	end
-	assert(#chunks==0, "Failed to resolve all labels")
+	Throw(exception.new("assembler.compiler.MaliformedAssemblyException", "Maliformed assembly"))
 	return chunk
 end
 --- Function for calling stuff when ran with --debug_test
@@ -396,8 +401,13 @@ function Main()
 	print(string.format("Assembling %s to %s", inputfile, outputfile))
 	local h = io.open(inputfile, "r")
 	assert(h, "Could not open input file")
-	local Parsed = parser.parseVallASM(h:read("all"), {})
-	h:close()
+	local Parsed = Try({parser.parseVallASM, h:read("all"), {}}, function (e)
+		prettyPrintTable(e)
+		return true
+	end, function ()
+		h:close()
+	end)
+	
 	local assembled = assembleParsed(Parsed)
 	h = io.open(outputfile, "wb")
 	assert(h, "Could not open output file")

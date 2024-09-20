@@ -41,7 +41,7 @@ function Throw(e)
     end
     e.__super = "Exception"
     e.caused = caused
-    error(e)
+    error(table.)
 end
 
 ---wrapped pcall for more conveient handling of exceptions
@@ -52,6 +52,7 @@ end
 ---@return any
 ---@overload fun(try: table, catch: fun(e: Exception)): any
 function Try(try, catch, finally)
+    finally = finally or function() end
     local status, exception = pcall(table.unpack(try))
     if not status then
         local status, handled = pcall(catch, exception)
