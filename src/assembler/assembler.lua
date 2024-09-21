@@ -54,6 +54,7 @@ end
 local function prettyPrintTable (T, indent, displayed)
 	indent = indent or 0
 	local displayed = displayed or {}
+	displayed[T] = true
 	_ = (indent==0) and print(string.rep("    ", indent) .. "{")
 	for k, v in pairs(T) do
 		if (T == v) then
@@ -63,6 +64,7 @@ local function prettyPrintTable (T, indent, displayed)
 				print(string.rep("    ", indent) .. string.format("\t[%s] = \x1B[31m<recursion>\x1B[0m", formatprimative(k)))
 			else
 				displayed[v] = true
+				print(string.rep("    ", indent) .. string.format("\t[%s] = {", formatprimative(k)))
 				prettyPrintTable(v, indent + 2, displayed)
 			end
 		else
@@ -407,8 +409,16 @@ function Main()
 	end, function ()
 		h:close()
 	end)
-	
-	local assembled = assembleParsed(Parsed)
+	local assembled = Try({assembleParsed,Parsed}, function(e)	
+		e:caused(exception.new("assembler.compiler.AssemblyException", "Failed to assemble"))
+		return
+	end, function()
+		h:close()
+	end)
+	if (not assembled) then
+		print("failed to assemble")
+		return
+	end
 	h = io.open(outputfile, "wb")
 	assert(h, "Could not open output file")
 	h:write(assembled)
@@ -416,4 +426,19 @@ function Main()
 end
 
 
-Main()
+xpcall(Main, 
+---@overload fun(e: Exception)
+function(e)
+	prettyPrintTable(e)
+	print("\x1B[31mUnhandled Exception in Main\x1B[0m:")
+	while (e) do
+		if (e.__parent) then
+			print("Caused:  " .. e.type .. ": " .. e.message)
+		else
+			print("\t" .. e.type ..  ": " .. e.message)
+		end
+		
+		e = e.__child
+	end
+	print(debug.traceback())
+end)
