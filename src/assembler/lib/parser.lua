@@ -1,19 +1,5 @@
+require("lib.utilitys")
 local parser = {}
-
-local TEST = 
-"fnDef init:				;\x2A\x08init\0\x01\0\0\n\z
-	push \"Hello, world!\";\x16\x05\x0D\x00Hello, world!\n\z
-	invoke \"print\", 1, 0;\x28\x08print\0\x01\x01\0\x01\0\0\n\z
-	ret			        ;\x21\0\n\z
-db 0,0\n\z
-fnDef onTick:					  ;\x2A\x08onTick\0\x01\0\0\n\z
-	push 1						  ;\x01\x01\x01\0\n\z
-	invoke \"getBool\", 1, 1	      ;\x28\x08getBool\0\x01\x01\0\x01\x01\0\n\z
-	jncr skp						  ;\x27\x01\x2D\x00 \n\z-\n\z- 4 bytes\n\z
-	push \"The screen was touched!\";\x01\x05\x17\x00The screen was touched! -- 27 bytes\n\z
-	invoke \"print\", 1, 0		  ;\x28\x08print\0\x01\x01\0\x01\0\0 -- 14 bytes\n\z
-skp: ret							  ;\x21\0"
-
 
 
 local instructionmap = {
@@ -97,6 +83,7 @@ end
 ---@field type string
 ---@field value any
 
+---#TODO Rework this field to better represent how it's used jhere
 ---@class instruction
 ---@field line number
 ---@field operands table<operand>
@@ -167,7 +154,9 @@ local function parseInstruction(s)
 	}
 	return instruction
 end
-
+---@param line any
+---@param linenumber any
+---@return instruction
 local function parseLine(line, linenumber)
 	if (line:find(";")) then
 		line = line:sub(1, select(1, line:find(";"))-1)
@@ -196,18 +185,38 @@ end
 ---@param args table<any>
 ---@return table<instruction>
 local function parseVallASM (input, args)
-	print("inputLen: " .. #input)
 	local parsed = {}
 	--first pass
 	local lines = split(input, "\n")
+	local meta = {
+		labels = {},
+		functions = {}
+	}
+	local emptyLabel = false
+	print("")
 	for i, line in ipairs(lines) do
 		if (line) then
-			parsed[#parsed+1] = parseLine(line, i)
-			print(line)
+			printf("\x1B[1AParsing line %d/%d", i, #lines)
+			local lineParsed = parseLine(line, i)
+			parsed[#parsed+1] = lineParsed;
+			---#TODO behold, this will explode if someone chains labels for some godforsaken reason!!!!!!!
+			if (lineParsed.type == "label") then
+				if lineParsed.instruction == nil then
+					emptyLabel = true
+				end
+			end
+			if (lineParsed.type == "instruction") then
+				if (emptyLabel) then
+					parsed[#parsed-1].instruction = lineParsed
+					emptyLabel = false
+				end
+			end
 		end
 	end
+	
 	return parsed
 end
+
 
 
 return {

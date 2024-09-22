@@ -3,76 +3,8 @@ local inputDir = "./in"
 local outputDir = "./out"
 local parser = require("lib.parser")
 local exception = require("lib.error")
+require("lib.utilitys")
 ---returns a string with the type formatted with ANSI color codes;
----@param v any value to format
----@param bin any 
----@return string
----@overload fun(v: string): string
-local function formatprimative(v, bin)
-	local redish = "\x1B[38;5;196m"
-	local orange = "\x1B[38;5;136m"
-	local green = "\x1B[38;5;2m"
-	local pink = "\x1B[38;5;13m"
-	local reset = "\x1B[0m"
-	if (type(v) == "string") then
-		--check for binary
-		if (v:match('[^ -~\n\t]')) then
-			local esc = green .. "\"" .. reset
-			for i=1, #v do
-				
-				if (string.char(v:byte(i)):match('[^ -~]') or bin) then
-					esc = esc .. redish .. string.format("\\x%02X", v:byte(i)) .. reset
-				else
-					esc = esc .. green .. string.char(v:byte(i)) .. reset
-				end
-			end
-			return esc .. green .. "\"" .. reset
-		end
-		return green .. "\"" .. v .. "\"" .. reset
-	elseif (type(v) == "number") then
-		return orange .. v .. reset
-	elseif (type(v) == "nil") then
-		return pink .. "nil" .. reset
-	elseif (type(v) == "boolean") then
-		return orange .. tostring(v) .. reset
-	elseif (type(v) == "function") then
-		local fstr = debug.getinfo(v).what
-		if (fstr == "C") then
-			fstr = "fn<C>"
-		else
-			fstr = "fn<Lua> " .. debug.getinfo(v).source .. ":" .. debug.getinfo(v).linedefined
-		end
-		return pink .. fstr .. reset
-	elseif (type(v) == "userdata") then
-		return pink .. "userdata" .. reset
-	elseif (type(v) == "thread") then	
-		return pink .. "thread" .. reset
-	else
-		return tostring(v)
-	end
-end
-local function prettyPrintTable (T, indent, displayed)
-	indent = indent or 0
-	local displayed = displayed or {}
-	displayed[T] = true
-	_ = (indent==0) and print(string.rep("    ", indent) .. "{")
-	for k, v in pairs(T) do
-		if (T == v) then
-			print(string.rep("    ", indent) .. string.format("\t[%s] = \x1B[31m<recursion>\x1B[0m", formatprimative(k)))
-		elseif (type(v) == "table") then
-			if (displayed[v]) then
-				print(string.rep("    ", indent) .. string.format("\t[%s] = \x1B[31m<recursion>\x1B[0m", formatprimative(k)))
-			else
-				displayed[v] = true
-				print(string.rep("    ", indent) .. string.format("\t[%s] = {", formatprimative(k)))
-				prettyPrintTable(v, indent + 2, displayed)
-			end
-		else
-			print(string.rep("    ", indent) .. string.format("\t[%s] = %s", formatprimative(k), formatprimative(v)))
-		end
-	end
-	print(string.rep("    ", indent) .. "}")
-end
 
 ---@class unfinishedassembly: table
 ---@field unfinished string
@@ -276,16 +208,19 @@ local assemblers =  {
 
 local function assembleParsed(parsed)
 	local assembled = {}
+	print("")
 	for i, instruction in ipairs(parsed) do
 		local assembler;
 		if (instruction.type == "instruction") then
 			assembler = assemblers[instruction.name:lower()]
 			assert(assembler, string.format("Invalid instruction %s at line %d", instruction.name, instruction.line))
+			printf("\x1B[1AAssembling instruction %d/%d", i, #parsed)
 			assembled[#assembled+1] = assembler(instruction)
 		elseif (instruction.type == "label") then
 			local eninstruction = instruction.instruction
 			assembler = assemblers[eninstruction.name:lower()]
 			assert(assembler, string.format("Invalid instruction %s at line %d", eninstruction.name, eninstruction.line))
+			printf("\x1B[1AAssembling instruction %d/%d", i, #parsed)
 			assembled[#assembled+1] = {assembler(eninstruction), instruction.name}
 		end
 	end
@@ -305,8 +240,6 @@ local function assembleParsed(parsed)
 		chunks[#chunks+1] = chunk
 	end
 	local start = 0
-	prettyPrintTable(chunks)
-	-- resolve labels
 	for i, v in ipairs(chunks) do
 		if (type(v) == "table" and v.unfinished) then
 			local key = v.key
@@ -330,23 +263,21 @@ local function assembleParsed(parsed)
 				end
 				label = label + #w
 			end
-			Throw(exception.new("assembler.compiler.MissingLabelException", string.format("Could not find label %s", key)))
+			if (not found) then
+				Throw(exception.new("assembler.compiler.UnresolvedLabelException", string.format("Unresolved label %s", key)))
+			end
 		end
 		start = start + #v
 	end
 	assembled = chunks
 	chunks = {}
-	prettyPrintTable(assembled)
+	print("Finished Resolving Labels")
 	for i, v in ipairs(assembled) do
 		if (type(v) == "string") then
 			chunk = chunk .. v
-		else
-			chunks[#chunks+1] = chunk
-			chunks[#chunks+1] = v
-			chunk = ""
 		end
 	end
-	Throw(exception.new("assembler.compiler.MaliformedAssemblyException", "Maliformed assembly"))
+	print("Finished Chunk Recompilation")
 	return chunk
 end
 --- Function for calling stuff when ran with --debug_test
@@ -412,8 +343,6 @@ function Main()
 	local assembled = Try({assembleParsed,Parsed}, function(e)	
 		e:caused(exception.new("assembler.compiler.AssemblyException", "Failed to assemble"))
 		return
-	end, function()
-		h:close()
 	end)
 	if (not assembled) then
 		print("failed to assemble")
@@ -429,6 +358,11 @@ end
 xpcall(Main, 
 ---@overload fun(e: Exception)
 function(e)
+	if (type(e) == "string") then
+		print("\x1B[31mUnhandled Exception in Main\x1B[0m:")
+		print(debug.traceback(e or "(error message was nil)"))
+		return
+	end
 	prettyPrintTable(e)
 	print("\x1B[31mUnhandled Exception in Main\x1B[0m:")
 	while (e) do
