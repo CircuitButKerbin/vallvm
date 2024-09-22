@@ -75,3 +75,7 @@ function printf(...)
 		print(string.format(...))
 	end
 end
+
+function isType(v, t)
+	return (type(v) == t) or ((type(v) == "table") and v.type == t)
+end

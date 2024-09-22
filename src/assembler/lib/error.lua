@@ -87,9 +87,29 @@ function Try(try, catch, finally)
         if status then
             return handled
         end
-        exception:caused(new("UnhandledException<".. exception.type .. ">", exception.message))
+        local status, finalexception = pcall(finally)
+        if (type(exception) == "table" and exception.__super == "Exception") then
+            exception.__child = new(string.format("CatchFailure<%s>", exception.type), "exception in catch block: " .. exception.message)
+            exception.__child.__parent = exception
+        else
+            exception = new("CatchFailure<RawException>", "exception in catch block: " .. tostring(exception))
+        end
+        if (not status and (type(finalexception) == "table" and finalexception.__super == "Exception")) then
+            finalexception.message = "exception in finally block: " .. finalexception.message
+            exception:caused(finalexception)
+        elseif (not status) then
+            exception:caused(new("CatchFailure<RawException>", "exception in finally block: " ..tostring(finalexception)))
+        end
+        Throw(exception)
     end
-    finally()
+    local status, finalexception = pcall(finally)
+    if (not status) then
+        if (type(finalexception) == "table" and finalexception.__super == "Exception") then
+            finalexception:caused(new(string.format("CatchFailure<%s>", exception.type), "exception in catch block: " .. exception.message))
+        else
+            Throw(new("CatchFailure<RawException>", "exception in finally block: " ..tostring(finalexception)))
+        end
+    end
     return exception
 end
 

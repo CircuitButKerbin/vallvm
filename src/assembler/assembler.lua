@@ -6,225 +6,20 @@ local exception = require("lib.error")
 require("lib.utilitys")
 ---returns a string with the type formatted with ANSI color codes;
 
----@class unfinishedassembly: table
----@field unfinished string
----@field key string
+local assemblers = require("instructions")
 
----@alias assembly string
----@alias buildfn fun(instruction:instruction):assembly|unfinishedassembly
-
----comment
----@param operand operand
----@return string, string
----@throws assembler.compiler.InvalidOperandException, assembler.compiler.InvalidCastException
-local function packoperand(operand, cast)
-	if (operand.type == "nil") then
-		--#TODO: implement nil
-	elseif (operand.type == "number") then
-		Assert(cast == nil or cast == "i16" or cast == "i32" or cast == "f32", exception.new("assembler.compiler.InvalidCastException", string.format("Cannot cast number to %s", cast)))
-		if (cast == "i16" or (not cast and (32767 >= operand.value) and (operand.value  >= -32768) and math.floor(operand.value) == operand.value)) then
-			return "\x01" .. string.pack("i2", operand.value), "i16"
-		elseif (cast == "i32" or (not cast and (math.maxinteger >= operand.value) and (operand.value >= math.mininteger) and (math.floor(operand.value) == operand.value))) then
-			return "\x02" .. string.pack("i4", operand.value), "i32"
-		else
-			return "\x03" .. string.pack("f", operand.value), "f32"
-		end
-	elseif (operand.type == "string") then
-		Assert(cast == nil or cast == "varaible", exception.new("assembler.compiler.InvalidCastException", string.format("Cannot cast string to %s", cast)))
-		if (cast == "varaible") then
-			Assert(not operand.value:match("\0"), exception.new("assembler.compiler.InvalidOperandException", string.format("Operand type 0x08 cannot contain null characters")))
-			return "\x08" .. operand.value .. "\0", "varaible"
-		else
-			return "\x05" .. string.pack("i2", #operand.value).. operand.value, "string"
-		end
-	elseif (operand.type == "label") then
-		Assert(cast == nil or cast == "varaible", exception.new("assembler.compiler.InvalidCastException", string.format("Cannot cast label to %s", cast)))
-		Assert(not operand.value:match("\0"), exception.new("assembler.compiler.InvalidOperandException", string.format("Operand type 0x08 cannot contain null characters")))
-		return "\x08" .. operand.value .. "\0", "varaible"
-	elseif (operand.type == "register") then
-		Assert(cast == nil or cast == "register", exception.new("assembler.compiler.InvalidCastException", string.format("Cannot cast register to %s", cast)))
-		Assert(operand.value >= 0 and operand.value <= 31, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid register number %d", operand.value)))
-		return string.char(0x40 | (operand.value & 0x1F)), "register"
-	else
-		Throw(exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid operand type %s", operand.type)))
-	end
-	error("unreachable")
-end
-
-local assemblers =  {
-	---@type buildfn
-	["push"] =	function (instruction)
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for push at line %d", instruction.line))
-		local operand = Try({packoperand, instruction.operands[1]}, function(e)
-			Throw(exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid operand for push at line %d", instruction.line)))
-		end, nil)
-		return "\x01" .. operand
-	end,
-	---@type buildfn
-	["pop"] =  function (instruction)
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for pop at line %d", instruction.line))
-		assert(instruction.operands[1].type == "string" or instruction.operands[1].type == "register", string.format("Invalid operand type for pop at line %d", instruction.line))
-		local operand;
-		if (instruction.operands[1].type == "register") then
-			operand = packoperand(instruction.operands[1], "register")
-		elseif (instruction.operands[1].type == "varaible") then
-			operand = packoperand(instruction.operands[1], "varaible")
-		end
-		return "\x02" .. operand
-	end,
-	["add"] = 	function (instruction) return "\x03" end,
-	["sub"] = 	function (instruction) return "\x04" end,
-	["mul"] = 	function (instruction) return "\x05" end,
-	["div"] = 	function (instruction) return "\x06" end,
-	["mod"] = 	function (instruction) return "\x07" end,
-	["and"] = 	function (instruction) return "\x08" end,
-	["or"] =  	function (instruction) return "\x09" end,
-	["xor"] = 	function (instruction) return "\x0A" end,
-	["not"] = 	function (instruction) return "\x0B" end,
-	["shl"] = 	function (instruction) return "\x0C" end,
-	["shr"] = 	function (instruction) return "\x0D" end,
-	["eq"] =  	function (instruction) return "\x10" end,
-	["ne"] =  	function (instruction) return "\x11" end,
-	["lt"] =  	function (instruction) return "\x12" end,
-	["gt"] =  	function (instruction) return "\x13" end,
-	["le"] =  	function (instruction) return "\x14" end,
-	["ge"] =  	function (instruction) return "\x15" end,
-	---@type buildfn
-	["load"] =	function (instruction)  
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for load at line %d", instruction.line))
-		assert(instruction.operands[1].type == "string" or instruction.operands[1].type == "register")
-		local operand;
-		if (instruction.operands[1].type == "register") then
-			operand = packoperand(instruction.operands[1], "register")
-		elseif (instruction.operands[1].type == "string") then
-			operand = packoperand(instruction.operands[1], "varaible")
-		end
-		return "\x16" .. operand
-	end,
-	["store"] = function (instruction)  
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for store at line %d", instruction.line))
-		assert(instruction.operands[1].type == "string" or instruction.operands[1].type == "register", string.format("Invalid operand type for store at line %d", instruction.line))
-		local operand;
-		if (instruction.operands[1].type == "register") then
-			operand = packoperand(instruction.operands[1], "register")
-		elseif (instruction.operands[1].type == "string") then
-			operand = packoperand(instruction.operands[1], "varaible")
-		end
-		return "\x17" .. operand
-	end,
-	["move"] = function (instruction)
-		assert(#instruction.operands == 2, string.format("Invalid number of operands for move at line %d", instruction.line))
-		assert(instruction.operands[1].type == "string" or instruction.operands[1].type == "register", string.format("Invalid operand 1 type for move at line %d", instruction.line))
-		assert(instruction.operands[2].type == "string" or instruction.operands[2].type == "register", string.format("Invalid operand 1 type for move at line %d", instruction.line))
-		local operand = {};
-		if (instruction.operands[1].type == "register") then
-			operand[1] = packoperand(instruction.operands[1], "register")
-		elseif (instruction.operands[1].type == "varaible") then
-			operand[1] = packoperand(instruction.operands[1], "varaible")
-		end
-		if (instruction.operands[1].type == "register") then
-			operand[2] = packoperand(instruction.operands[2], "register")
-		elseif (instruction.operands[1].type == "varaible") then
-			operand[2] = packoperand(instruction.operands[2], "varaible")
-		end
-		return "\x18" .. operand[1] .. operand[2]
-	end,
-	["call"] = function (instruction)
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for call at line %d", instruction.line))
-		assert(instruction.operands[1].type == "label", "Invalid operand type for call")
-		return "\x20" .. packoperand(instruction.operands[1], "varaible")
-	end,
-	["ret"] = function (instruction) return "\x21" end,
-	---@type buildfn
-	["jmp"] = function(instruction) 
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for jmp at line %d", instruction.line))
-		assert(instruction.operands[1].type == "label", "Invalid operand type for jmp")
-		---@type unfinishedassembly	
-		return { 
-			unfinished = "\x22" .. "UABSJ",
-			key = instruction.operands[1].value
-		}
-	end,
-	---@type buildfn
-	["jcc"] = function(instruction) 
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for jcc at line %d", instruction.line))
-		assert(instruction.operands[1].type == "label", "Invalid operand type for jcc")
-		---@type unfinishedassembly	
-		return { 
-			unfinished = "\x23" .. "UABSJ",
-			key = instruction.operands[1].value
-		}
-	end,
-	["jnc"] = function(instruction) 
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for jnc at line %d", instruction.line))
-		assert(instruction.operands[1].type == "label", "Invalid operand type for jnc")
-		---@type unfinishedassembly	
-		return { 
-			unfinished = "\x24" .. "UABSJ",
-			key = instruction.operands[1].value
-		}
-	end,
-	["jr"] = function(instruction) 
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for jr at line %d", instruction.line))
-		assert(instruction.operands[1].type == "label", "Invalid operand type for jr")
-		---@type unfinishedassembly	
-		return { 
-			unfinished = "\x25" .. "URELJ",
-			key = instruction.operands[1].value
-		}
-	end,
-	["jcr"] = function(instruction) 
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for jcr at line %d", instruction.line))
-		assert(instruction.operands[1].type == "label", "Invalid operand type for jcr")
-		---@type unfinishedassembly	
-		return { 
-			unfinished = "\x26" .. "URELJ",
-			key = instruction.operands[1].value
-		}
-	end,
-	["jncr"] = function(instruction) 
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for jncr at line %d", instruction.line))
-		assert(instruction.operands[1].type == "label", "Invalid operand type for jncr")
-		---@type unfinishedassembly	
-		return { 
-			unfinished = "\x27" .. "URELJ",
-			key = instruction.operands[1].value
-		}
-	end,
-	["invoke"] = function (instruction)
-		assert(#instruction.operands == 3, string.format("Invalid number of operands for invoke at line %d", instruction.line))
-		assert(instruction.operands[1].type == "string", "Invalid operand 1 type for invoke")
-		assert(instruction.operands[2].type == "number", "Invalid operand 2 type for invoke")
-		assert(instruction.operands[2].type == "number", "Invalid operand 3 type for invoke")
-		return "\x28" .. packoperand(instruction.operands[1], "varaible") .. packoperand(instruction.operands[2], "i16") .. packoperand(instruction.operands[3], "i16")
-	end,
-	["yield"] =	 function (instruction) return "\x29" end,
-	["fndef"] = function (instruction)
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for fndef at line %d", instruction.line))
-		assert(instruction.operands[1].type == "label", "Invalid operand type for fndef")
-		return "\x2A" .. packoperand(instruction.operands[1], "varaible")
-	end,
-}
-
+---@param parsed table<ParsedLine>
 local function assembleParsed(parsed)
 	local assembled = {}
-	print("")
-	for i, instruction in ipairs(parsed) do
-		local assembler;
-		if (instruction.type == "instruction") then
-			assembler = assemblers[instruction.name:lower()]
-			assert(assembler, string.format("Invalid instruction %s at line %d", instruction.name, instruction.line))
-			printf("\x1B[1AAssembling instruction %d/%d", i, #parsed)
-			assembled[#assembled+1] = assembler(instruction)
-		elseif (instruction.type == "label") then
-			local eninstruction = instruction.instruction
-			assembler = assemblers[eninstruction.name:lower()]
-			assert(assembler, string.format("Invalid instruction %s at line %d", eninstruction.name, eninstruction.line))
-			printf("\x1B[1AAssembling instruction %d/%d", i, #parsed)
-			assembled[#assembled+1] = {assembler(eninstruction), instruction.name}
-		end
+	for i, line in ipairs(parsed) do
+		---@type ParsedLine
+		line = line;
+		Assert(line.instruction, exception.new("assembler.compiler.AssemblyException", string.format("No instruction at line %d", line.lineDefined)))
+		local assembler = assemblers[line.instruction.name:lower()]
+		Assert(line.instruction, exception.new("assembler.compiler.AssemblyException", string.format("Invalid Instruction at line %d", line.lineDefined)))
+		printf("\x1B[1AAssembling instruction %d/%d", i, #parsed)
+		assembled[#assembled+1] = #line.labels == 0 and assembler(line.instruction) or {assembly=assembler(line.instruction), labels=line.labels, type="LabeledLine"}
 	end
-	-- pass two | combine chunks
 	local chunks = {}
 	local chunk = ""
 	for i, v in ipairs(assembled) do
@@ -240,41 +35,56 @@ local function assembleParsed(parsed)
 		chunks[#chunks+1] = chunk
 	end
 	local start = 0
-	for i, v in ipairs(chunks) do
-		if (type(v) == "table" and v.unfinished) then
+	for chunkToResolve, v in ipairs(chunks) do
+		if (type(v) == "table" and (isType(v, "UnfinishedAssembly") or isType(v.assembly, "UnfinishedAssembly"))) then
+			local assembly = v;
+			if (isType(v.assembly, "UnfinishedAssembly")) then
+				assembly = v.assembly
+			end
 			local key = v.key
 			local found = false
-			local label = 0
-			for j, w in ipairs(chunks) do
-				if (type(w) == "table" and w[2] == key) then
-					local jloc
-					if (v.unfinished:find("URELJ")) then
-						jloc = label - start
-						if (jloc < 0) then
-							jloc = jloc - 14
+			local labelOffset = 0
+			for _, labelChunk in ipairs(chunks) do
+				if (isType(labelChunk, "LabeledLine")) then
+					for _, l in ipairs(labelChunk.labels) do
+						if (l.name == key) then
+							found = true
+							break
 						end
-					else
-						jloc = label
 					end
-					chunks[i] = v.unfinished:sub(1, 1) .. "\x02".. string.pack("i4", jloc + 6)
-					chunks[j] = chunks[j][1]
-					found = true
-					break
+					if (found) then
+						local jloc
+						if (v.unfinished:find("URELJ")) then
+							jloc = labelOffset - start
+						else
+							jloc = labelOffset
+						end
+						local asm = v.unfinished:sub(1, 1) .. "\x02".. string.pack("i4", jloc)
+						if (isType(v.assembly, "UnfinishedAssembly")) then
+							chunks[chunkToResolve].assembly = asm
+						else
+							chunks[chunkToResolve] = asm
+						end
+						break
+					end
 				end
-				label = label + #w
+				labelOffset = labelOffset + (isType(labelChunk, "LabeledLine") and ((isType(labelChunk, "UnfinishedAssembly") and #labelChunk.assembly.unfinished) or #labelChunk.assembly) or ((isType(labelChunk, "UnfinishedAssembly") and #labelChunk.unfinished) or #labelChunk))
 			end
 			if (not found) then
 				Throw(exception.new("assembler.compiler.UnresolvedLabelException", string.format("Unresolved label %s", key)))
 			end
 		end
-		start = start + #v
+		start = start +  (isType(v, "LabeledLine") and ((isType(v, "UnfinishedAssembly") and #v.assembly.unfinished) or #v.assembly) or ((isType(v, "UnfinishedAssembly") and #v.unfinished) or #v))
 	end
 	assembled = chunks
 	chunks = {}
 	print("Finished Resolving Labels")
+	--prettyPrintTable(assembled)
 	for i, v in ipairs(assembled) do
-		if (type(v) == "string") then
-			chunk = chunk .. v
+		if (type(v) == "string" or (isType(v,"LabeledLine") and type(v.assembly) == "string")) then
+			chunk = chunk .. ((type(v) == "table" and v.assembly) or v)
+		else
+			Throw(exception.new("assembler.compiler.AssemblyException", string.format("Failed to resolve chunk %d (Missing label?)", i)))
 		end
 	end
 	print("Finished Chunk Recompilation")
@@ -334,7 +144,7 @@ function Main()
 	print(string.format("Assembling %s to %s", inputfile, outputfile))
 	local h = io.open(inputfile, "r")
 	assert(h, "Could not open input file")
-	local Parsed = Try({parser.parseVallASM, h:read("all"), {}}, function (e)
+	local Parsed = Try({parser.parseVallASM, h:read("all"), {filename=inputfile:match(".*/(.*)")}}, function (e)
 		prettyPrintTable(e)
 		return true
 	end, function ()

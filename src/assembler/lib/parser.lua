@@ -83,13 +83,26 @@ end
 ---@field type string
 ---@field value any
 
----#TODO Rework this field to better represent how it's used jhere
----@class instruction
----@field line number
+---@class Instruction
+---@field lineDefined number
 ---@field operands table<operand>
----@field type string
+---@field type "instruction"
 ---@field name string
 ---@field opcode number
+
+---@class Label
+---@field type "label"
+---@field name string
+---@field lineDefined number
+
+---@class LabelArray: table
+---@field type "labelArray"
+
+---@class ParsedLine
+---@field type "parsedline"
+---@field lineDefined number
+---@field labels LabelArray | nil
+---@field instruction Instruction | nil
 
 local function parseOperands(operands) 
 	local escString = {}
@@ -138,8 +151,9 @@ local function parseOperands(operands)
 	return list
 end
 
--- label instruction "string with, fake second", real second, real third
-
+---comment
+---@param s any
+---@return Instruction
 local function parseInstruction(s)
 	local opi, opj = s:find("^%w+")
 	local operation = s:sub(opi, opj)
@@ -154,36 +168,58 @@ local function parseInstruction(s)
 	}
 	return instruction
 end
----@param line any
----@param linenumber any
----@return instruction
-local function parseLine(line, linenumber)
-	if (line:find(";")) then
-		line = line:sub(1, select(1, line:find(";"))-1)
+
+---@param lineString string
+---@param lineNumber number
+---@return ParsedLine
+local function parseLine(lineString, lineNumber)
+	if (lineString:find(";")) then
+		lineString = lineString:sub(1, select(1, lineString:find(";"))-1)
 	end
 	local label = ""
-	line = line:gsub("^%s*(.-)%s*$", "%1")
-	if (line:find("^%w+:")) then
-		label = line:sub(line:find("^%w+:"))
+	lineString = lineString:gsub("^%s*(.-)%s*$", "%1")
+	if (lineString:find("^%w+:")) then
+		---@diagnostic disable-next-line This must exist or it'll never be exectuted :p
+		label = lineString:sub(lineString:find("^%w+:"))
 		label = label:gsub(":", "")
-		line = line:sub(select(-1, line:find("^%w+:"))+1, #line)
+		lineString = lineString:sub(select(-1, lineString:find("^%w+:"))+1, #lineString)
 	end
-	local instruction = parseInstruction(line:gsub("^%s*(.-)%s*$", "%1"))
-	instruction.line = linenumber
+	local instruction;
+	if lineString ~= "" then
+		instruction = parseInstruction(lineString:gsub("^%s*(.-)%s*$", "%1"))
+		instruction.lineDefined = lineNumber
+	else
+		instruction = nil
+	end
 	if #label > 0  then
+		---@type ParsedLine
 		return {
-			type = "label",
-			name = label,
+			type = "parsedline",
+			lineDefined = lineNumber,
+			labels = {
+				type = "labelArray",
+				{
+					type = "label",
+					name = label,
+					lineDefined = lineNumber
+				}
+			},
 			instruction = instruction
 		}
 	else
-		return instruction;
+		---@type ParsedLine
+		return {
+			type = "parsedline",
+			lineDefined = lineNumber,
+			instruction = instruction,
+			labels = {}
+		}
 	end
 end
 
 ---@param input string
 ---@param args table<any>
----@return table<instruction>
+---@return table<ParsedLine>
 local function parseVallASM (input, args)
 	local parsed = {}
 	--first pass
@@ -192,28 +228,34 @@ local function parseVallASM (input, args)
 		labels = {},
 		functions = {}
 	}
+	local emptyLabels = {}
 	local emptyLabel = false
 	print("")
 	for i, line in ipairs(lines) do
 		if (line) then
 			printf("\x1B[1AParsing line %d/%d", i, #lines)
 			local lineParsed = parseLine(line, i)
-			parsed[#parsed+1] = lineParsed;
-			---#TODO behold, this will explode if someone chains labels for some godforsaken reason!!!!!!!
-			if (lineParsed.type == "label") then
-				if lineParsed.instruction == nil then
-					emptyLabel = true
-				end
+			if (#lineParsed.labels > 0 and lineParsed.instruction == nil) then
+				emptyLabel = true
+				emptyLabels[#emptyLabels+1] = lineParsed.labels[1];
 			end
-			if (lineParsed.type == "instruction") then
-				if (emptyLabel) then
-					parsed[#parsed-1].instruction = lineParsed
-					emptyLabel = false
-				end
+			if (lineParsed.instruction and emptyLabel) then
+				emptyLabel = false
+				emptyLabels[#emptyLabels+1] = lineParsed.labels[1]
+				lineParsed.labels = emptyLabels
+				lineParsed.labels.type = "labelArray"
+				emptyLabels = {}
+				parsed[#parsed+1] = lineParsed
+			elseif (lineParsed.instruction) then
+				parsed[#parsed+1] = lineParsed
 			end
 		end
 	end
-	
+	if (emptyLabel) then
+		printf("%s:%d \x1B[35mwarning:\x1B[0m empty label at EOF; label will be undefined!", args.filename, parsed[#parsed].labels[1].lineDefined)
+		parsed[#parsed].labels = {}
+	end
+	--prettyPrintTable(parsed)
 	return parsed
 end
 
