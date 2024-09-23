@@ -63,7 +63,7 @@ local assemblers =  {
 		local operand;
 		if (instruction.operands[1].type == "register") then
 			operand = packoperand(instruction.operands[1], "register")
-		elseif (instruction.operands[1].type == "varaible") then
+		elseif (instruction.operands[1].type == "string") then
 			operand = packoperand(instruction.operands[1], "varaible")
 		end
 		return "\x02" .. operand

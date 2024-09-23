@@ -230,6 +230,7 @@ local function parseVallASM (input, args)
 	}
 	local emptyLabels = {}
 	local emptyLabel = false
+	print("Parsing Input")
 	print("")
 	for i, line in ipairs(lines) do
 		if (line) then

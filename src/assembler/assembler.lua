@@ -114,6 +114,7 @@ function Main()
 		print("\t--help\t\tDisplay this help message")
 		print("\t--version\tDisplay version information")
 		print("\t-o <file>\tOutput to file")
+		print("\t-O prints the output to stdout")
 		return
 	end
 	if (arg[1] == "--debug_test") then
@@ -156,6 +157,10 @@ function Main()
 	end)
 	if (not assembled) then
 		print("failed to assemble")
+		return
+	end
+	if (getarg("-O", true)) then
+		print(formatprimative(assembled,true))
 		return
 	end
 	h = io.open(outputfile, "wb")
