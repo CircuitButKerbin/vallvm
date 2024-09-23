@@ -1,29 +1,12 @@
 fnDef init:
-	push "Hello, world!"
-	invoke "print", 1, 0
 	ret
+
 fnDef onTick:
+	ret
+
+fnDef onDraw:
 	push 1
-	invoke "getBool", 1, 1
-	jncr skp
-	push "The screen was touched!"
- 	invoke "print", 1, 0
-skp: push "The screen wasn't touched"
-	invoke "print", 1, 0
-	push "Loop test:"
-	invoke "print", 1, 0
 	push 1
-	store "X"
-loop: push 1
-	load "X"
-	add
-	store "X"
-	push "Loop iteration %d"
-	load "X"
-	invoke "string.format", 2, 1
-	invoke "print", 1, 0
-	push 10
-	load "X"
-	lt
-	jcr loop
+	push "Hello, World!"
+	invoke "screen.drawText", 3, 0
 	ret

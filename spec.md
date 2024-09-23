@@ -17,7 +17,7 @@ The types are as follows
 - `0x06` : `table`
 - `0x07` : `function`
 - `0x08` : `variable` - Null-terminated string; Pointer bit does not apply to this type 
-- `dxdxzdxzcdxzdxdcv xfbnnb  vnnvdc dcvxfdcxv f- (internal)
+- `0x09` : `register` - Register number (internal)
 ### Instructions
 - `0x01` - `push` - Pushes a value to the stack
 - `0x02` - `pop` - Pops a value from the stack

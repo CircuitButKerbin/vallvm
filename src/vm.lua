@@ -4,14 +4,14 @@ local processor_state = {
 	stack = {},
 	register = {},
 	program_counter = 1,
-	program = "\x21\x2A\x08\x69\x6E\x69\x74\x00\x01\x05\x0D\x00\x48\x65\x6C\x6C\x6F\x2C\x20\x77\x6F\x72\x6C\x64\x21\x28\x08\x70\x72\x69\x6E\x74\x00\x01\x01\x00\x01\x00\x00\x21\x2A\x08\x6F\x6E\x54\x69\x63\x6B\x00\x01\x01\x01\x00\x28\x08\x67\x65\x74\x42\x6F\x6F\x6C\x00\x01\x01\x00\x01\x01\x00\x27\x02\x2F\x00\x00\x00\x01\x05\x17\x00\x54\x68\x65\x20\x73\x63\x72\x65\x65\x6E\x20\x77\x61\x73\x20\x74\x6F\x75\x63\x68\x65\x64\x21\x28\x08\x70\x72\x69\x6E\x74\x00\x01\x01\x00\x01\x00\x00\x01\x05\x19\x00\x54\x68\x65\x20\x73\x63\x72\x65\x65\x6E\x20\x77\x61\x73\x6E\x27\x74\x20\x74\x6F\x75\x63\x68\x65\x64\x28\x08\x70\x72\x69\x6E\x74\x00\x01\x01\x00\x01\x00\x00\x01\x05\x0A\x00\x4C\x6F\x6F\x70\x20\x74\x65\x73\x74\x3A\x28\x08\x70\x72\x69\x6E\x74\x00\x01\x01\x00\x01\x00\x00\x01\x01\x01\x00\x17\x08\x58\x00\x01\x01\x01\x00\x16\x08\x58\x00\x03\x17\x08\x58\x00\x01\x05\x11\x00\x4C\x6F\x6F\x70\x20\x69\x74\x65\x72\x61\x74\x69\x6F\x6E\x20\x25\x64\x16\x08\x58\x00\x28\x08\x73\x74\x72\x69\x6E\x67\x2E\x66\x6F\x72\x6D\x61\x74\x00\x01\x02\x00\x01\x01\x00\x28\x08\x70\x72\x69\x6E\x74\x00\x01\x01\x00\x01\x00\x00\x01\x01\x0A\x00\x16\x08\x58\x00\x12\x26\x02\xAD\xFF\xFF\xFF\x21",
+	program = "\x2A\x08\x69\x6E\x69\x74\x00\x01\x01\x01\x00\x02\x08\x64\x6F\x4F\x6E\x63\x65\x00\x21\x2A\x08\x6F\x6E\x54\x69\x63\x6B\x00\x21\x2A\x08\x6F\x6E\x44\x72\x61\x77\x00\x16\x08\x64\x6F\x4F\x6E\x63\x65\x00\x27\x02\x3D\x00\x00\x00\x01\x01\x00\x00\x02\x08\x64\x6F\x4F\x6E\x63\x65\x00\x01\x01\x01\x00\x01\x01\x01\x00\x01\x05\x0D\x00\x48\x65\x6C\x6C\x6F\x2C\x20\x57\x6F\x72\x6C\x64\x21\x28\x08\x64\x72\x61\x77\x54\x65\x78\x74\x00\x01\x03\x00\x01\x00\x00\x21",
 	globals = {},
 	functions = {},
 	return_address_stack = {},
 	cycles = 0,
 }
 
-local _procDebug = {
+_procDebug = {
 	trace = {},
 	pushToExecTrace = function (s, instructionName, address)
 		s.trace[address] = fmt("t+%d c+%d | %s ", processor_state.ticks, processor_state.cycles, instructionName)
@@ -84,9 +84,11 @@ end
 function onTick()
 	--#TODO load program code
 	ExecuteBytecode(processor_state.program, processor_state, "init", true)
-	ExecuteBytecode(processor_state.program, processor_state, "onTick", true)
-	ExecuteBytecode(processor_state.program, processor_state, "onTick", true)
-	print("Ticks: " .. processor_state.ticks)
+	for i=1, 60 do
+		ExecuteBytecode(processor_state.program, processor_state, "onTick", true)
+		ExecuteBytecode(processor_state.program, processor_state, "onDraw", true)
+		processor_state.ticks = processor_state.ticks + 1
+	end
 end
 
 ---@diagnostic disable-next-line
@@ -275,15 +277,33 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 			state.program_counter = state.return_address_stack[#state.return_address_stack]
 			cut(state.return_address_stack, 1)
 		elseif (op >= 0x22 and op <= 0x27) then -- JUMP, JUMP_IF_TRUE, JUMP_IF_FALSE
-			_procDebug:pushToExecTrace("JUMP", location)
+			local jmpName;
+			if (op==0x22) then
+				jmpName = "JUMP"
+			elseif (op==0x23) then
+				jmpName = "JCC"
+			elseif (op==0x24) then
+				jmpName = "JNC"
+			elseif (op==0x25) then
+				jmpName = "JR"
+			elseif (op==0x26) then
+				jmpName = "JCR"
+			elseif (op==0x27) then
+				jmpName = "JNCR"
+			end
 			local v, t, len = ParseOperand(bytecode, location+1)
 			assert(t == 1 or t == 2, fmt("Jumps requires a i32 or i16, got type %d", t))
 			local stackState = table.remove(state.stack, #state.stack)
+			if (type(stackState) == "number") then
+				stackState = stackState ~= 0
+			end
 			local cond = (op == 0x22 or op == 0x25) or ((op == 0x23 or op == 0x26) and stackState) or ((op == 0x24 or op == 0x27) and not stackState)
 			cut(state.stack, 1)
 			if (cond) then
+				_procDebug:pushToExecTrace(jmpName .. (cond and " (Jumped)" or " (Continued)"), location)
 				state.program_counter = (op>=0x25 and (state.program_counter + v) or v)
 			else
+				_procDebug:pushToExecTrace(jmpName .. (cond and " (Jumped)" or " (Continued)"), location)
 				state.program_counter = state.program_counter + len + 1
 			end
 		elseif (op==0x28) then -- INVOKE
@@ -356,7 +376,9 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 	end
 end
 local state = false;
-_ENV.print = print
+_ENV.drawText = function(x, y, text)
+		print("Drawing text at " .. x .. ", " .. y .. ": " .. text)
+	end
 _ENV.getBool = function()
 		state = not state;
 		return state;
