@@ -8,6 +8,8 @@ local exception = require("lib.error")
 ---@alias assembly string
 ---@alias buildfn fun(instruction:Instruction):assembly|unfinishedassembly
 
+
+
 ---comment
 ---@param operand operand
 ---@return string, string
@@ -50,7 +52,7 @@ end
 local assemblers =  {
 	---@type buildfn
 	["push"] =	function (instruction)
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for push at line %d", instruction.lineDefined))
+		Assert(#instruction.operands == 1, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid number of operands for push at line %d", instruction.lineDefined)))
 		local operand = Try({packoperand, instruction.operands[1]}, function(e)
 			Throw(exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid operand for push at line %d", instruction.lineDefined)))
 		end, nil)
@@ -58,8 +60,8 @@ local assemblers =  {
 	end,
 	---@type buildfn
 	["pop"] =  function (instruction)
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for pop at line %d", instruction.lineDefined))
-		assert(instruction.operands[1].type == "string" or instruction.operands[1].type == "register", string.format("Invalid operand type for pop at line %d", instruction.lineDefined))
+		Assert(#instruction.operands == 1, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid number of operands for pop at line %d", instruction.lineDefined)))
+		Assert(instruction.operands[1].type == "string" or instruction.operands[1].type == "register", exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid operand type for pop at line %d", instruction.lineDefined)))
 		local operand;
 		if (instruction.operands[1].type == "register") then
 			operand = packoperand(instruction.operands[1], "register")
@@ -87,8 +89,8 @@ local assemblers =  {
 	["ge"] =  	function (instruction) return "\x15" end,
 	---@type buildfn
 	["load"] =	function (instruction)  
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for load at line %d", instruction.lineDefined))
-		assert(instruction.operands[1].type == "string" or instruction.operands[1].type == "register")
+		Assert(#instruction.operands == 1, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid number of operands for load at line %d", instruction.lineDefined)))
+		Assert(instruction.operands[1].type == "string" or instruction.operands[1].type == "register", exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid operand type for load at line %d", instruction.lineDefined)))
 		local operand;
 		if (instruction.operands[1].type == "register") then
 			operand = packoperand(instruction.operands[1], "register")
@@ -98,8 +100,8 @@ local assemblers =  {
 		return "\x16" .. operand
 	end,
 	["store"] = function (instruction)  
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for store at line %d", instruction.lineDefined))
-		assert(instruction.operands[1].type == "string" or instruction.operands[1].type == "register", string.format("Invalid operand type for store at line %d", instruction.lineDefined))
+		Assert(#instruction.operands == 1, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid number of operands for store at line %d", instruction.lineDefined)))
+		Assert(instruction.operands[1].type == "string" or instruction.operands[1].type == "register", exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid operand type for store at line %d", instruction.lineDefined)))
 		local operand;
 		if (instruction.operands[1].type == "register") then
 			operand = packoperand(instruction.operands[1], "register")
@@ -109,9 +111,9 @@ local assemblers =  {
 		return "\x17" .. operand
 	end,
 	["move"] = function (instruction)
-		assert(#instruction.operands == 2, string.format("Invalid number of operands for move at line %d", instruction.lineDefined))
-		assert(instruction.operands[1].type == "string" or instruction.operands[1].type == "register", string.format("Invalid operand 1 type for move at line %d", instruction.lineDefined))
-		assert(instruction.operands[2].type == "string" or instruction.operands[2].type == "register", string.format("Invalid operand 1 type for move at line %d", instruction.lineDefined))
+		Assert(#instruction.operands == 2, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid number of operands for move at line %d", instruction.lineDefined)))
+		Assert(instruction.operands[1].type == "string" or instruction.operands[1].type == "register", exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid operand 1 type for move at line %d", instruction.lineDefined)))
+		Assert(instruction.operands[2].type == "string" or instruction.operands[2].type == "register", exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid operand 2 type for move at line %d", instruction.lineDefined)))
 		local operand = {};
 		if (instruction.operands[1].type == "register") then
 			operand[1] = packoperand(instruction.operands[1], "register")
@@ -126,15 +128,15 @@ local assemblers =  {
 		return "\x18" .. operand[1] .. operand[2]
 	end,
 	["call"] = function (instruction)
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for call at line %d", instruction.lineDefined))
-		assert(instruction.operands[1].type == "label", "Invalid operand type for call")
+		Assert(#instruction.operands == 1, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid number of operands for call at line %d", instruction.lineDefined)))
+		Assert(instruction.operands[1].type == "label", exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid operand type for call at line %d", instruction.lineDefined)))
 		return "\x20" .. packoperand(instruction.operands[1], "varaible")
 	end,
 	["ret"] = function (instruction) return "\x21" end,
 	---@type buildfn
 	["jmp"] = function(instruction) 
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for jmp at line %d", instruction.lineDefined))
-		assert(instruction.operands[1].type == "label", "Invalid operand type for jmp")
+		Assert(#instruction.operands == 1, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid number of operands for jmp at line %d", instruction.lineDefined)))
+		Assert(instruction.operands[1].type == "label", exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid operand type for jmp at line %d", instruction.lineDefined)))
 		---@type unfinishedassembly	
 		return { 
 			unfinished = "\x22" .. "UABSJ",
@@ -144,8 +146,8 @@ local assemblers =  {
 	end,
 	---@type buildfn
 	["jcc"] = function(instruction) 
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for jcc at line %d", instruction.lineDefined))
-		assert(instruction.operands[1].type == "label", "Invalid operand type for jcc")
+		Assert(#instruction.operands == 1, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid number of operands for jcc at line %d", instruction.lineDefined)))
+		Assert(instruction.operands[1].type == "label", exception.new("assembler.compiler.InvalidOperandException", "Invalid operand type for jcc"))
 		---@type unfinishedassembly	
 		return { 
 			unfinished = "\x23" .. "UABSJ",
@@ -154,8 +156,8 @@ local assemblers =  {
 		}
 	end,
 	["jnc"] = function(instruction) 
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for jnc at line %d", instruction.lineDefined))
-		assert(instruction.operands[1].type == "label", "Invalid operand type for jnc")
+		Assert(#instruction.operands == 1, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid number of operands for jnc at line %d", instruction.lineDefined)))
+		Assert(instruction.operands[1].type == "label", exception.new("assembler.compiler.InvalidOperandException", "Invalid operand type for jnc"))
 		---@type unfinishedassembly	
 		return { 
 			unfinished = "\x24" .. "UABSJ",
@@ -164,8 +166,8 @@ local assemblers =  {
 		}
 	end,
 	["jr"] = function(instruction) 
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for jr at line %d", instruction.lineDefined))
-		assert(instruction.operands[1].type == "label", "Invalid operand type for jr")
+		Assert(#instruction.operands == 1, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid number of operands for jr at line %d", instruction.lineDefined)))
+		Assert(instruction.operands[1].type == "label", exception.new("assembler.compiler.InvalidOperandException", "Invalid operand type for jr"))
 		---@type unfinishedassembly	
 		return { 
 			unfinished = "\x25" .. "URELJ",
@@ -174,8 +176,8 @@ local assemblers =  {
 		}
 	end,
 	["jcr"] = function(instruction) 
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for jcr at line %d", instruction.lineDefined))
-		assert(instruction.operands[1].type == "label", "Invalid operand type for jcr")
+		Assert(#instruction.operands == 1, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid number of operands for jcr at line %d", instruction.lineDefined)))
+		Assert(instruction.operands[1].type == "label", exception.new("assembler.compiler.InvalidOperandException", "Invalid operand type for jcr"))
 		---@type unfinishedassembly	
 		return { 
 			unfinished = "\x26" .. "URELJ",
@@ -184,8 +186,8 @@ local assemblers =  {
 		}
 	end,
 	["jncr"] = function(instruction) 
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for jncr at line %d", instruction.lineDefined))
-		assert(instruction.operands[1].type == "label", "Invalid operand type for jncr")
+		Assert(#instruction.operands == 1, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid number of operands for jncr at line %d", instruction.lineDefined)))
+		Assert(instruction.operands[1].type == "label", exception.new("assembler.compiler.InvalidOperandException", "Invalid operand type for jncr"))
 		---@type unfinishedassembly	
 		return { 
 			unfinished = "\x27" .. "URELJ",
@@ -194,16 +196,16 @@ local assemblers =  {
 		}
 	end,
 	["invoke"] = function (instruction)
-		assert(#instruction.operands == 3, string.format("Invalid number of operands for invoke at line %d", instruction.lineDefined))
-		assert(instruction.operands[1].type == "string", "Invalid operand 1 type for invoke")
-		assert(instruction.operands[2].type == "number", "Invalid operand 2 type for invoke")
-		assert(instruction.operands[2].type == "number", "Invalid operand 3 type for invoke")
+		Assert(#instruction.operands == 3, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid number of operands for invoke at line %d", instruction.lineDefined)))
+		Assert(instruction.operands[1].type == "string", exception.new("assembler.compiler.InvalidOperandException", "Invalid operand 1 type for invoke"))
+		Assert(instruction.operands[2].type == "number", exception.new("assembler.compiler.InvalidOperandException", "Invalid operand 2 type for invoke"))
+		Assert(instruction.operands[2].type == "number", exception.new("assembler.compiler.InvalidOperandException", "Invalid operand 3 type for invoke"))
 		return "\x28" .. packoperand(instruction.operands[1], "varaible") .. packoperand(instruction.operands[2], "i16") .. packoperand(instruction.operands[3], "i16")
 	end,
 	["yield"] =	 function (instruction) return "\x29" end,
 	["fndef"] = function (instruction)
-		assert(#instruction.operands == 1, string.format("Invalid number of operands for fndef at line %d", instruction.lineDefined))
-		assert(instruction.operands[1].type == "label", "Invalid operand type for fndef")
+		Assert(#instruction.operands == 1, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid number of operands for fndef at line %d", instruction.lineDefined)))
+		Assert(instruction.operands[1].type == "label", exception.new("assembler.compiler.InvalidOperandException", "Invalid operand type for fndef"))
 		return "\x2A" .. packoperand(instruction.operands[1], "varaible")
 	end,
 }
