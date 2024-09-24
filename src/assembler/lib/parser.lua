@@ -212,7 +212,9 @@ local function parseLine(lineString, lineNumber)
 			type = "parsedline",
 			lineDefined = lineNumber,
 			instruction = instruction,
-			labels = {}
+			labels = {
+				type = "labelArray"
+			}
 		}
 	end
 end
