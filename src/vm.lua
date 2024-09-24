@@ -130,7 +130,7 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 		end
 		state.functions = functions;
 	end
-	---@return any value, number type, integer size
+	---@return any value, number type, integer size, string|nil variableName
 	function ParseOperand(bytecode, location)
 		local typeDef = string.byte(bytecode, location)
 		local Type = typeDef & 0x1F
@@ -355,6 +355,7 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 			if (suc) then
 				if (state.program_counter > #state.program) then
 					suc = false
+					---@diagnostic disable-next-line
 					ret = "PC jumped out of bounds after executing instruction"
 				end
 			end

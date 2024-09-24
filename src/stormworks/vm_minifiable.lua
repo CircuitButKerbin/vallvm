@@ -1,3 +1,4 @@
+---@diagnostic disable
 local ps = {
 	ticks = 0;
 	init = false,

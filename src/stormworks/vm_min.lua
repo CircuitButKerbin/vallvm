@@ -1,3 +1,5 @@
+---REMOVE THESE COMMENTS BEFORE PASTING INTO STORMWORKS
+---@diagnostic disable 
 local a={ticks=0,init=false,stk={},reg={},pc=1,pg="",globals={},fns={},RAS={},cycles=0}local function b(c)local function d(e,f)local f,g=f or":",{}e:gsub(_S.format("([^%s]+)",f),function(h)g[#g+1]=h end)return g end
 if c:match("%.")then local i=d(c,"%.")local j=_ENV
 for k=1,#i do j=j[i[k]]if not j then return nil end end
