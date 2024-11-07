@@ -1,0 +1,45 @@
+fnDef init:
+	invoke "newTable", 0, 1 
+	store "T"
+	load "T" 
+	load "T"
+	invoke "len", 1, 1 
+	push 1
+	add 
+	push "test" 
+	invoke "rawset", 3, 0 ; rawset({}, "test", 1)
+	load "T"
+	invoke "prettyPrintTable", 1, 0
+	push "calling %s"
+	push "test"
+	invoke "printf", 2, 0
+	push 0
+	call test
+	ret
+
+fnDef onTick:
+	ret
+
+fnDef onDraw:
+	ret
+
+fnDef test:
+	pop "_"
+	push "test recurse %d"
+	load "_"
+	invoke "printf", 2, 0
+	load "_"
+	push 1
+	add
+	store "_1"
+	load "_1"
+	push 10
+	lt
+	store "r"
+	pop "_"
+	pop "_"
+	load "r"
+	jcr r
+	load "_1"
+	call test
+r:  ret

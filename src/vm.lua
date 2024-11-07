@@ -1,10 +1,119 @@
+--#region imports
+---@param v any value to format
+---@param bin any 
+---@return string
+---@overload fun(v: string): string
+function formatprimative(v, bin)
+	local redish = "\x1B[38;5;196m"
+	local orange = "\x1B[38;5;136m"
+	local green = "\x1B[38;5;2m"
+	local pink = "\x1B[38;5;13m"
+	local reset = "\x1B[0m"
+	if (type(v) == "string") then
+		--check for binary
+		if (v:match('[^ -~\n\t]')) then
+			local esc = green .. "\"" .. reset
+			for i=1, #v do
+				
+				if (string.char(v:byte(i)):match('[^ -~]') or bin) then
+					esc = esc .. redish .. string.format("\\x%02X", v:byte(i)) .. reset
+				else
+					esc = esc .. green .. string.char(v:byte(i)) .. reset
+				end
+			end
+			return esc .. green .. "\"" .. reset
+		end
+		return green .. "\"" .. v .. "\"" .. reset
+	elseif (type(v) == "number") then
+		return orange .. v .. reset
+	elseif (type(v) == "nil") then
+		return pink .. "nil" .. reset
+	elseif (type(v) == "boolean") then
+		return orange .. tostring(v) .. reset
+	elseif (type(v) == "function") then
+		local fstr = debug.getinfo(v).what
+		if (fstr == "C") then
+			fstr = "fn<C>"
+		else
+			fstr = "fn<Lua> " .. debug.getinfo(v).source .. ":" .. debug.getinfo(v).linedefined
+		end
+		return pink .. fstr .. reset
+	elseif (type(v) == "userdata") then
+		return pink .. "userdata" .. reset
+	elseif (type(v) == "thread") then	
+		return pink .. "thread" .. reset
+	elseif
+		(type(v) == "table") then
+		local addr = tostring(v):sub(pull(1, string.find(tostring(v), ":")) + 2, -1)
+		if (addr) then
+			return pink .. string.format("table@%s", addr) .. reset
+		end
+		return pink .. "table" .. reset
+	else
+		return tostring(v)
+	end
+end
+function prettyPrintTable (T, indent, displayed)
+	indent = indent or 0
+	local displayed = displayed or {}
+	displayed[T] = true
+	_ = (indent==0) and print(string.rep("    ", indent) .. "{")
+	for k, v in pairs(T) do
+		if (T == v) then
+			print(string.rep("    ", indent) .. string.format("\t[%s] = \x1B[31m<recursion>\x1B[0m", formatprimative(k)))
+		elseif (type(v) == "table") then
+			if (displayed[v]) then
+				print(string.rep("    ", indent) .. string.format("\t[%s] = <\x1B[38;5;13m%s>\x1B[0m", formatprimative(k), formatprimative(v)))
+			else
+				displayed[v] = true
+				print(string.rep("    ", indent) .. string.format("\t[%s] = {", formatprimative(k)))
+				prettyPrintTable(v, indent + 2, displayed)
+			end
+		else
+			print(string.rep("    ", indent) .. string.format("\t[%s] = %s", formatprimative(k), formatprimative(v)))
+		end
+	end
+	print(string.rep("    ", indent + (indent == 1 and 1 or 0)) .. "}")
+end
+
+function printf(...)
+	if #... == 1 then
+		print(...)
+	else
+		print(string.format(...))
+	end
+end
+
+function isType(v, t)
+	return (type(v) == t) or ((type(v) == "table") and v.type == t)
+end
+--#endregion
+
+
+_ENV.newTable = function ()
+	return {}
+end
+_ENV.len = function (t)
+	return #t
+end
+_ENV.prettyPrintTable = prettyPrintTable
+
 local processor_state = {
 	ticks = 0;
 	init = false,
 	stack = {},
 	register = {},
 	program_counter = 1,
-	program = "\x2A\x08\x69\x6E\x69\x74\x00\x01\x01\x01\x00\x02\x08\x64\x6F\x4F\x6E\x63\x65\x00\x21\x2A\x08\x6F\x6E\x54\x69\x63\x6B\x00\x21\x2A\x08\x6F\x6E\x44\x72\x61\x77\x00\x16\x08\x64\x6F\x4F\x6E\x63\x65\x00\x27\x02\x3D\x00\x00\x00\x01\x01\x00\x00\x02\x08\x64\x6F\x4F\x6E\x63\x65\x00\x01\x01\x01\x00\x01\x01\x01\x00\x01\x05\x0D\x00\x48\x65\x6C\x6C\x6F\x2C\x20\x57\x6F\x72\x6C\x64\x21\x28\x08\x64\x72\x61\x77\x54\x65\x78\x74\x00\x01\x03\x00\x01\x00\x00\x21",
+	program = ({
+		fn = function ()
+			local file = io.open("C:\\Users\\minec\\git\\VallVM\\src\\assembler\\out\\test.val", "rb")
+			assert(file, "Could not open file")
+			local content = file:read("all")
+			file:close()
+			printf("Loaded %d bytes", #content)
+			return content
+		end
+	}).fn(),
 	globals = {},
 	functions = {},
 	return_address_stack = {},
@@ -253,7 +362,7 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 			_procDebug:pushToExecTrace("STORE", location)
 			local v, t, len, n = ParseOperand(bytecode, location+1)
 			assert(t == 8 or t==9, fmt("Store requires a global variable name or register, got type %d", t))
-			WriteOperand(table.remove(state.stack, #state.stack), t, _, n)
+			WriteOperand(state.stack[#state.stack], t, _, n)
 			state.program_counter = location + len + 1
 		elseif (op==0x18) then -- MOVE
 			_procDebug:pushToExecTrace("MOVE", location)
@@ -262,6 +371,23 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 			assert(t1 == 8 or t1==9 and t2 == 8 or t2 == 9, fmt("Move requires a global variable name or register, got type %d", t1))
 			WriteOperand(v2, t1, len2, n1)
 			state.program_counter = location + 1 + len + len2
+		elseif (op == 0x19) then
+			_procDebug:pushToExecTrace("SWAP", location)
+			local a, b = state.stack[#state.stack], state.stack[#state.stack-1]
+			state.stack[#state.stack] = b
+			state.stack[#state.stack-1] = a
+			state.program_counter = location + 1
+		elseif (op == 0x1A) then
+			_procDebug:pushToExecTrace("DUPE", location)
+			state.stack[#state.stack+1] = state.stack[#state.stack]
+			state.program_counter = location + 1
+		elseif (op == 0x1B) then
+			_procDebug:pushToExecTrace("DROP", location)
+			cut(state.stack, 1)
+			state.program_counter = location + 1
+		elseif (op == 0x1C) then
+			_procDebug:pushToExecTrace("OVER", location)
+			state.stack[#state.stack+1] = state.stack[#state.stack-1];
 		elseif (op==0x20) then -- CALL
 			_procDebug:pushToExecTrace("CALL", location)
 			local _, t, len, n = ParseOperand(bytecode, location+1)
@@ -298,7 +424,6 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 				stackState = stackState ~= 0
 			end
 			local cond = (op == 0x22 or op == 0x25) or ((op == 0x23 or op == 0x26) and stackState) or ((op == 0x24 or op == 0x27) and not stackState)
-			cut(state.stack, 1)
 			if (cond) then
 				_procDebug:pushToExecTrace(jmpName .. (cond and " (Jumped)" or " (Continued)"), location)
 				state.program_counter = (op>=0x25 and (state.program_counter + v) or v)
@@ -319,6 +444,11 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 				args[i] = state.stack[#state.stack - argCount + i]
 			end
 			cut(state.stack, argCount)
+			local argSafe = {}
+			for i=1, #args do
+				argSafe[i] = formatprimative(args[i])
+			end
+			printf("[DEBUG] : Calling %s(%s)", externName, table.concat(argSafe, ", "))
 			local ret = table.pack(fn(table.unpack(args)))
 			local returns, t, len3 = ParseOperand(bytecode, location+1 + len + len2)
 			assert(t == 1 or t == 2, fmt("Extern function return count must be of integer type %d", t))
@@ -331,6 +461,19 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 			return true
 		--elseif (op==0x2A) then
 		--	_procDebug:pushToExecTrace("FNDEF")
+		elseif (op==0x30) then
+			print("Breakpoint")
+			_procDebug:pushToExecTrace("BP", location)
+			_procDebug.dumpProgram(location, 1)
+			-- dump stack
+			print("Stack:")
+			prettyPrintTable(state.stack)
+			print("Global Variables")
+			prettyPrintTable(state.globals)
+			state.program_counter = location + 1
+		elseif (op==0x31) then -- NOP
+			_procDebug:pushToExecTrace("NOP", location)
+			state.program_counter = location + 1
 		else
 			error(fmt("Unknown opcode 0x%02X [PC:%08x]", op, state.program_counter or 0xDEADBEEF))
 		end
@@ -377,11 +520,4 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 	end
 end
 local state = false;
-_ENV.drawText = function(x, y, text)
-		print("Drawing text at " .. x .. ", " .. y .. ": " .. text)
-	end
-_ENV.getBool = function()
-		state = not state;
-		return state;
-	end
 onTick()

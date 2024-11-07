@@ -26,6 +26,12 @@ local instructionmap = {
 	[0x16] = "load",
 	[0x17] = "store",
 	[0x18] = "move",
+
+	[0x19] = "swap",
+	[0x1A] = "dupe",
+	[0x1B] = "drop",
+	[0x1C] = "over",
+
 	[0x20] = "call",
 	[0x21] = "ret",
 	[0x22] = "jmp",
@@ -37,6 +43,8 @@ local instructionmap = {
 	[0x28] = "invoke",
 	[0x29] = "yield",
 	[0x2A] = "fndef",
+	[0x30] = "bp",
+	[0x31] = "nop",
 	-- string -> byte
 	["push"] =	0x01,
 	["pop"] =	0x02,
@@ -60,6 +68,12 @@ local instructionmap = {
 	["load"] =	0x16,
 	["store"] =	0x17,
 	["move"] =	0x18,
+
+	["swap"] =  0x19,
+	["dupe"] =  0x1A,
+	["drop"] =  0x1B,
+	["over"] =  0x1C,
+
 	["call"] =	0x20,
 	["ret"] =	0x21,
 	["jmp"] =	0x22,
@@ -70,7 +84,9 @@ local instructionmap = {
 	["jncr"] =	0x27,
 	["invoke"] =0x28,
 	["yield"] =	0x29,
-	["fndef"] = 0x2A
+	["fndef"] = 0x2A,
+	["bp"] =	0x30,
+	["nop"] =	0x31
 }
 local function split(str, sep)
 	local sep, fields = sep or ":", {}
@@ -104,6 +120,11 @@ end
 ---@field labels LabelArray | nil
 ---@field instruction Instruction | nil
 
+---@class ParsedMacro
+---@field type "parsedmacro"
+---@field lineDefined number
+---@field lines table<ParsedLine>
+
 local function parseOperands(operands) 
 	local escString = {}
 	local next = 1
@@ -134,7 +155,7 @@ local function parseOperands(operands)
 				tmp.value = tonumber(list[j]:match("%-?%d*%.?%d+"))
 			end
 			if (list[j]:match("0x%x+") and not tmp.type) then
-				tmp.type = "hex"
+				tmp.type = "number"
 				tmp.value = tonumber(list[j]:match("0x%x+"))
 			end
 			if (list[j]:match("[%w_]:$") and not tmp.type) then
@@ -169,10 +190,43 @@ local function parseInstruction(s)
 	return instruction
 end
 
+local function parseDirective(s)
+	if (s:find("^%%luaCall")) then
+		_, j = s:find("^%w+")
+		local args = parseOperands(s:sub(j+1, #s):gsub("^%s*(.-)%s*$", "%1"))
+		local rets = 0
+		local expanded = {}
+		for i, v in ipairs(args) do
+			if (i == #args) then
+				if (v.type == "number") then
+					rets = v.value
+					break
+				end
+				error "Invalid return value count"
+			end
+			if (v.type == "string") then
+				expanded[#expanded+1] = string.format("push \"%s\"", v.value)
+			end
+			if (v.type == "number") then
+				expanded[#expanded+1] = string.format("push %f", v.value)
+			end
+			if (v.type == "label") then
+				expanded[#expanded+1] = string.format("push %s", v.value)
+			end
+		end
+		expanded[#expanded+1] = string.format("invoke \"%s\", %d, %d", #args-1, rets)
+
+	end
+end
+
 ---@param lineString string
 ---@param lineNumber number
----@return ParsedLine
+---@return ParsedLine | ParsedMacro
 local function parseLine(lineString, lineNumber)
+	if (lineString:find("^%%")) then
+
+		
+	end
 	if (lineString:find(";")) then
 		lineString = lineString:sub(1, select(1, lineString:find(";"))-1)
 	end
@@ -262,6 +316,11 @@ local function parseVallASM (input, args)
 	return parsed
 end
 
+---@param str string parse table string
+---@return table | nil
+local function parseTableString(str)
+
+end
 
 
 return {

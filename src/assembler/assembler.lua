@@ -16,6 +16,7 @@ local function assembleParsed(parsed)
 		line = line;
 		Assert(line.instruction, exception.new("assembler.compiler.AssemblyException", string.format("No instruction at line %d", line.lineDefined)))
 		local assembler = assemblers[line.instruction.name:lower()]
+		Assert(assembler, exception.new("assembler.compiler.AssemblyException", string.format("No assembler for instruction %s at line %d", line.instruction.name, line.lineDefined)))
 		Assert(line.instruction, exception.new("assembler.compiler.AssemblyException", string.format("Invalid Instruction at line %d", line.lineDefined)))
 		printf("\x1B[1AAssembling instruction %d/%d", i, #parsed)
 		assembled[#assembled+1] = #line.labels == 0 and assembler(line.instruction) or {assembly=assembler(line.instruction), labels=line.labels, type="LabeledLine"}

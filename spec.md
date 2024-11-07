@@ -1,23 +1,35 @@
 # Specification
 ## Vall Bytecode
 ### Instruction Format
-	Instructions are variable in size. The first byte of an instruction is the opcode, defining the
+Instructions are variable in size. The first byte of an instruction is the opcode, defining the
 operation to be performed. The opcode is followed by zero or more operands. Operands are encoded as followed.
-	Byte 1: Operand type
-		0b0RPT_TTTT
-		R: if the data represents a register (type then represents the register number)
-		P: if the data represents a pointer (following instead of data will be a 32 bit int)
-		T: type of the data
-The types are as follows
+Byte 1: Operand type
+0b0RPT_TTTT
+R: if the data represents a register (type then represents the register number)
+P: if the data represents a pointer (following instead of data will be a 32 bit int)
+T: type of the data
+### Simple Types
 - `0x00` : `nil`
+ - Simple Type representing a lua nil value
 - `0x01` : `i16`
+ - 16 bit signed integer (2 bytes)
 - `0x02` : `i32`
+ - 32 bit signed integer (4 bytes)
 - `0x03` : `f32`
+ - 32 bit floating point number (4 bytes)
 - `0x05` : `bytes`
-- `0x06` : `table`
+ - Byte array (2 bytes for length, followed by the bytes)
+- `0x08` : `variable`
+ - Null-terminated string; Pointer bit does not apply to this type 
+- `0x09` : `register` 
+ - Register number (internal)
+### Complex Type - Table
+`0x06` \: `table`
+
+Table (2 bytes for number of key-value pairs, followed by the key-value pairs)
+	
 - `0x07` : `function`
-- `0x08` : `variable` - Null-terminated string; Pointer bit does not apply to this type 
-- `0x09` : `register` - Register number (internal)
+	: Fear
 ### Instructions
 - `0x01` - `push` - Pushes a value to the stack
 - `0x02` - `pop` - Pops a value from the stack

@@ -127,6 +127,12 @@ local assemblers =  {
 		end
 		return "\x18" .. operand[1] .. operand[2]
 	end,
+
+	["swap"] = function (instruction) return "\x19" end,
+	["dupe"] = function (instruction) return "\x1A" end,
+	["drop"] = function (instruction) return "\x1B" end,
+	["over"] = function (instruction) return "\x1C" end,
+
 	["call"] = function (instruction)
 		Assert(#instruction.operands == 1, exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid number of operands for call at line %d", instruction.lineDefined)))
 		Assert(instruction.operands[1].type == "label", exception.new("assembler.compiler.InvalidOperandException", string.format("Invalid operand type for call at line %d", instruction.lineDefined)))
@@ -208,5 +214,7 @@ local assemblers =  {
 		Assert(instruction.operands[1].type == "label", exception.new("assembler.compiler.InvalidOperandException", "Invalid operand type for fndef"))
 		return "\x2A" .. packoperand(instruction.operands[1], "varaible")
 	end,
+	["bp"] = function (instruction) return "\x30" end,
+	["nop"] = function (instruction) return "\x31" end
 }
 return assemblers

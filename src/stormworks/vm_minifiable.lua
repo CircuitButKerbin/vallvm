@@ -249,6 +249,19 @@ function EB(bytecode, s, executeFunction)
 			else
 				s.pc = s.pc + len + 1
 			end
+		elseif (op == 25) then
+			local a, b = s.stk[#s.stk], s.stk[#s.stk-1]
+			s.stk[#s.stk] = b
+			s.stk[#s.stk-1] = a
+			s.program_counter = location + 1
+		elseif (op == 26) then
+			s.stk[#s.stk+1] = s.stk[#s.stk]
+			s.program_counter = location + 1
+		elseif (op == 27) then
+			cut(s.stk, 1)
+			s.program_counter = location + 1
+		elseif (op ==28) then
+			s.stk[#s.stk+1] = s.stk[#s.stk-1];
 		elseif (op==40) then 
 			local _, t, len, externName = PO(bytecode, location+1)
 			local fn = RGE(externName)
@@ -266,6 +279,8 @@ function EB(bytecode, s, executeFunction)
 			s.pc = location + 1 + len + len2 + len3
 		elseif (op==41) then 
 			return true
+		elseif (op == 49) then
+			s.pc = location + 1
 		else
 			_E(fmt("unkop: %02X", op or 0))
 			return true

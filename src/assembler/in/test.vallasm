@@ -1,12 +1,22 @@
 fnDef init:
+	push 0
+	push 0
+	eq
+	pop "true"
+	push 0
+	push 1
+	eq
+	store "false" ; give us boolean types
+	
 	ret
 
 fnDef onTick:
+
 	ret
 
 fnDef onDraw:
-	push 1
-	push 1
+	push 0
+	push 0
 	push "Hello, World!"
 	invoke "screen.drawText", 3, 0
 	ret
