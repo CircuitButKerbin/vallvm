@@ -125,6 +125,8 @@ end
 ---@field lineDefined number
 ---@field lines table<ParsedLine>
 
+
+
 local function parseOperands(operands) 
 	local escString = {}
 	local next = 1
@@ -176,7 +178,8 @@ end
 ---@param s any
 ---@return Instruction
 local function parseInstruction(s)
-	local opi, opj = s:find("^%w+")
+	local opi, opj = s:find("^[%w%%]+")
+	print(s)
 	local operation = s:sub(opi, opj)
 	local operands = s:sub(opj+1, #s)
 	operation = operation:gsub("^%s*(.-)%s*$", "%1")
@@ -190,48 +193,22 @@ local function parseInstruction(s)
 	return instruction
 end
 
-local function parseDirective(s)
-	if (s:find("^%%luaCall")) then
-		_, j = s:find("^%w+")
-		local args = parseOperands(s:sub(j+1, #s):gsub("^%s*(.-)%s*$", "%1"))
-		local rets = 0
-		local expanded = {}
-		for i, v in ipairs(args) do
-			if (i == #args) then
-				if (v.type == "number") then
-					rets = v.value
-					break
-				end
-				error "Invalid return value count"
-			end
-			if (v.type == "string") then
-				expanded[#expanded+1] = string.format("push \"%s\"", v.value)
-			end
-			if (v.type == "number") then
-				expanded[#expanded+1] = string.format("push %f", v.value)
-			end
-			if (v.type == "label") then
-				expanded[#expanded+1] = string.format("push %s", v.value)
-			end
-		end
-		expanded[#expanded+1] = string.format("invoke \"%s\", %d, %d", #args-1, rets)
-
-	end
-end
-
 ---@param lineString string
 ---@param lineNumber number
 ---@return ParsedLine | ParsedMacro
 local function parseLine(lineString, lineNumber)
-	if (lineString:find("^%%")) then
-
-		
-	end
 	if (lineString:find(";")) then
 		lineString = lineString:sub(1, select(1, lineString:find(";"))-1)
 	end
 	local label = ""
 	lineString = lineString:gsub("^%s*(.-)%s*$", "%1")
+	if (lineString:find("^%%")) then
+		return {
+			type = "parsedmacro",
+			lineDefined = lineNumber,
+			lines = ParseDirective(lineString, lineNumber)
+		}
+	end
 	if (lineString:find("^%w+:")) then
 		---@diagnostic disable-next-line This must exist or it'll never be exectuted :p
 		label = lineString:sub(lineString:find("^%w+:"))
@@ -273,6 +250,43 @@ local function parseLine(lineString, lineNumber)
 	end
 end
 
+---@return table<ParsedLine>
+function ParseDirective(s, lineNumber)
+	if (s:find("^%%luaCall")) then
+		local _, j = s:find("^[%w%%]+")
+		local args = parseOperands(s:sub(j+1, #s):gsub("^%s*(.-)%s*$", "%1"))
+		local rets = 0
+		local expanded = {}
+		local fn = ""
+		prettyPrintTable(args)
+		for i, v in ipairs(args) do
+			if (i == #args) then
+				assert(v.type == "number", "Last argument must be a number")
+				rets = v.value
+				break
+			end
+			if (i == 1) then
+				assert(v.type == "string" or v.type == "label", "First argument must be a string")
+				fn = v.value
+			else
+				if (v.type == "string") then
+					expanded[#expanded+1] = parseLine(string.format("push \"%s\"", v.value), lineNumber)
+				end
+				if (v.type == "number") then
+					expanded[#expanded+1] = parseLine(string.format("push %f", v.value), lineNumber)
+				end
+				if (v.type == "label") then
+					expanded[#expanded+1] = parseLine(string.format("push %s", v.value), lineNumber)
+				end
+			end
+		end
+		expanded[#expanded+1] = parseLine(string.format("invoke \"%s\", %d, %d", fn ,#args-1, rets), lineNumber)
+		return expanded
+	end
+	error("Invalid directive")
+end
+
+
 ---@param input string
 ---@param args table<any>
 ---@return table<ParsedLine>
@@ -289,6 +303,7 @@ local function parseVallASM (input, args)
 	print("Parsing Input")
 	print("")
 	for i, line in ipairs(lines) do
+		--#TODO: Add support for macros
 		if (line) then
 			printf("\x1B[1AParsing line %d/%d", i, #lines)
 			local lineParsed = parseLine(line, i)
