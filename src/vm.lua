@@ -106,7 +106,7 @@ local processor_state = {
 	program_counter = 1,
 	program = ({
 		fn = function ()
-			local file = io.open("C:\\Users\\minec\\git\\VallVM\\src\\assembler\\out\\test.val", "rb")
+			local file = io.open("./assembler/out/test.val", "rb")
 			assert(file, "Could not open file")
 			local content = file:read("all")
 			file:close()
@@ -520,4 +520,10 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 	end
 end
 local state = false;
+---@diagnostic disable-next-line
+screen = {
+	drawText = function (x, y, text)
+		printf("\"%s\" @ (%d,%d)", text, x , y)
+	end
+}
 onTick()

@@ -291,6 +291,7 @@ end
 ---@param args table<any>
 ---@return table<ParsedLine>
 local function parseVallASM (input, args)
+	---@type table<ParsedLine>
 	local parsed = {}
 	--first pass
 	local lines = split(input, "\n")
@@ -307,19 +308,33 @@ local function parseVallASM (input, args)
 		if (line) then
 			printf("\x1B[1AParsing line %d/%d", i, #lines)
 			local lineParsed = parseLine(line, i)
-			if (#lineParsed.labels > 0 and lineParsed.instruction == nil) then
-				emptyLabel = true
-				emptyLabels[#emptyLabels+1] = lineParsed.labels[1];
-			end
-			if (lineParsed.instruction and emptyLabel) then
-				emptyLabel = false
-				emptyLabels[#emptyLabels+1] = lineParsed.labels[1]
-				lineParsed.labels = emptyLabels
-				lineParsed.labels.type = "labelArray"
-				emptyLabels = {}
-				parsed[#parsed+1] = lineParsed
-			elseif (lineParsed.instruction) then
-				parsed[#parsed+1] = lineParsed
+			if (lineParsed.type == "parsedmacro") then
+				for j, v in ipairs(lineParsed.lines) do
+					if (j == 1) then
+						if (emptyLabel) then
+							parsed[#parsed+1] = v
+							emptyLabel = false
+							parsed[#parsed].labels = emptyLabels
+						end
+					else
+						parsed[#parsed+1] = v
+					end
+				end
+			else
+				if (#lineParsed.labels > 0 and lineParsed.instruction == nil) then
+					emptyLabel = true
+					emptyLabels[#emptyLabels+1] = lineParsed.labels[1];
+				end
+				if (lineParsed.instruction and emptyLabel) then
+					emptyLabel = false
+					emptyLabels[#emptyLabels+1] = lineParsed.labels[1]
+					lineParsed.labels = emptyLabels
+					lineParsed.labels.type = "labelArray"
+					emptyLabels = {}
+					parsed[#parsed+1] = lineParsed
+				elseif (lineParsed.instruction) then
+					parsed[#parsed+1] = lineParsed
+				end
 			end
 		end
 	end
@@ -327,7 +342,7 @@ local function parseVallASM (input, args)
 		printf("%s:%d \x1B[35mwarning:\x1B[0m empty label at EOF; label will be undefined!", args.filename, parsed[#parsed].labels[1].lineDefined)
 		parsed[#parsed].labels = {}
 	end
-	--prettyPrintTable(parsed)
+	prettyPrintTable(parsed)
 	return parsed
 end
 
