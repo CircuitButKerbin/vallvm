@@ -2,7 +2,7 @@ _T=true
 function _F(...)return _S.format(...) end
 local a={init=false,S={},B={},K=1,P="",G={},FN={},R={}}local function b(c)local function d(e,f)local f,g=f or":",{}e:gsub(_F("([^%s]+)",f),function(h)g[#g+1]=h end)return g end
 _ENV.newT=function () return {} end
-_ENV.State=function () return a end
+_ENV._State=function () return a end
 _ENV.len=function (t) return #t end
 _ENV.concat=function(a,b) return a..b end
 if c:match("%.")then local i=d(c,"%.")local j=_ENV

@@ -106,7 +106,7 @@ local processor_state = {
 	program_counter = 1,
 	program = ({
 		fn = function ()
-			local file = io.open("./assembler/out/test.val", "rb")
+			local file = io.open("./assembler/out/firmware.val", "rb")
 			assert(file, "Could not open file")
 			local content = file:read("all")
 			file:close()
@@ -192,12 +192,14 @@ end
 ---@diagnostic disable-next-line
 function onTick()
 	--#TODO load program code
+	local t = os.clock()
 	ExecuteBytecode(processor_state.program, processor_state, "init", true)
-	for i=1, 60 do
+	for i=1, 1 do
 		ExecuteBytecode(processor_state.program, processor_state, "onTick", true)
 		ExecuteBytecode(processor_state.program, processor_state, "onDraw", true)
 		processor_state.ticks = processor_state.ticks + 1
 	end
+	print("Finished in " .. (os.clock() - t)*1000 .. "ms")
 end
 
 ---@diagnostic disable-next-line
@@ -388,6 +390,7 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 		elseif (op == 0x1C) then
 			_procDebug:pushToExecTrace("OVER", location)
 			state.stack[#state.stack+1] = state.stack[#state.stack-1];
+			state.program_counter = location + 1
 		elseif (op==0x20) then -- CALL
 			_procDebug:pushToExecTrace("CALL", location)
 			local _, t, len, n = ParseOperand(bytecode, location+1)
@@ -424,8 +427,8 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 				stackState = stackState ~= 0
 			end
 			local cond = (op == 0x22 or op == 0x25) or ((op == 0x23 or op == 0x26) and stackState) or ((op == 0x24 or op == 0x27) and not stackState)
+			_procDebug:pushToExecTrace(jmpName .. (cond and " (Jumped)" or " (Continued)"), location)
 			if (cond) then
-				_procDebug:pushToExecTrace(jmpName .. (cond and " (Jumped)" or " (Continued)"), location)
 				state.program_counter = (op>=0x25 and (state.program_counter + v) or v)
 			else
 				_procDebug:pushToExecTrace(jmpName .. (cond and " (Jumped)" or " (Continued)"), location)
@@ -448,7 +451,7 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 			for i=1, #args do
 				argSafe[i] = formatprimative(args[i])
 			end
-			printf("[DEBUG] : Calling %s(%s)", externName, table.concat(argSafe, ", "))
+			--printf("[DEBUG] : Calling %s(%s)", externName, table.concat(argSafe, ", "))
 			local ret = table.pack(fn(table.unpack(args)))
 			local returns, t, len3 = ParseOperand(bytecode, location+1 + len + len2)
 			assert(t == 1 or t == 2, fmt("Extern function return count must be of integer type %d", t))
@@ -462,14 +465,14 @@ function ExecuteBytecode(bytecode, state, executeFunction, runProctected)
 		--elseif (op==0x2A) then
 		--	_procDebug:pushToExecTrace("FNDEF")
 		elseif (op==0x30) then
-			print("Breakpoint")
-			_procDebug:pushToExecTrace("BP", location)
-			_procDebug.dumpProgram(location, 1)
-			-- dump stack
-			print("Stack:")
-			prettyPrintTable(state.stack)
-			print("Global Variables")
-			prettyPrintTable(state.globals)
+			-- print("Breakpoint")
+			-- _procDebug:pushToExecTrace("BP", location)
+			-- _procDebug.dumpProgram(location, 1)
+			-- -- dump stack
+			-- print("Stack:")
+			-- prettyPrintTable(state.stack)
+			-- print("Global Variables")
+			-- prettyPrintTable(state.globals)
 			state.program_counter = location + 1
 		elseif (op==0x31) then -- NOP
 			_procDebug:pushToExecTrace("NOP", location)
@@ -523,7 +526,62 @@ local state = false;
 ---@diagnostic disable-next-line
 screen = {
 	drawText = function (x, y, text)
-		printf("\"%s\" @ (%d,%d)", text, x , y)
+		--printf("\"%s\" @ (%d,%d)", text, x , y)
 	end
 }
+local minMap = {
+	["P"] = "program",
+	["S"] = "stack",
+	["B"] = "register",
+	["K"] = "program_counter",
+	["G"] = "globals",
+	["FN"] = "functions",
+	["R"] = "return_address_stack",
+}
+
+processor_state = setmetatable(processor_state, {
+	__index = function (t, k)
+		if (minMap[k]) then
+			return rawget(t, minMap[k])
+		end
+		return rawget(t, k)
+	end
+})
+
+function get(t, k)
+	return t[k]
+end
+
+function State()
+	return processor_state
+end
+
+function concat(a, b)
+	return a .. b
+end
+
 onTick()
+
+--[[
+local processor_state = {
+	ticks = 0;
+	init = false,
+	stack = {},
+	register = {},
+	program_counter = 1,
+	program = ({
+		fn = function ()
+			local file = io.open("./assembler/out/firmware.val", "rb")
+			assert(file, "Could not open file")
+			local content = file:read("all")
+			file:close()
+			printf("Loaded %d bytes", #content)
+			return content
+		end
+	}).fn(),
+	globals = {},
+	functions = {},
+	return_address_stack = {},
+	cycles = 0,
+}
+]]

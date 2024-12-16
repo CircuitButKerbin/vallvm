@@ -14,17 +14,19 @@ for:
 	add ; 			  			 len, concated, i+1
 	swap ; 			  			 len, i+1, concated
 	over  ; 		  			 len, i+1, concated, i+1
-	push "%02X" ; 	  			 len, i+1, concat, i+1, "%02X"
+	push "%02X" ; 	  			 len, i+1, concated, i+1, "%02X"
 	swap ; 		      			 len, i+1, concated, "%02X", i+1
-	load "program" ;  			 len, i+1, concated, "%02X", $"program"
-	swap ; 			  			 len, i+1, concated, "%02X", $"program", i+1
-	invoke "string.byte", 2, 1 ; len, i+1, concated, "%02X", $"program"[i+1]
+	load "program" ;  			 len, i+1, concated, "%02X", i+1, $"program"
+	swap ; 			  			 len, i+1, concated, "%02X", i+1, $"program", i+1
+	invoke "string.byte", 2, 1 ; len, i+1, concated, "%02X", i+1, $"program"[i+1]
 	invoke "string.format", 2, 1;len, i+1, concated, hex($"program"[i+1])
 	invoke "concat", 2, 1 ;      len, i+1, concated
 	pop "formatted" ; 	         len, i+1
 	over 			; 			 len, i+1, len
 	over ; length, index	     len, i+1, len, index
-	lt ; index < length          len, i+1, len<index
+	; length, index, 1	 len, i+1, len, index
+	swap; length, index-1	     len, i+1, len, index-1
+	gt ; index-1 < length          len, i+1, len<index
 	jcr for
 	push 0
 	push 0

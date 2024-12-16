@@ -6,7 +6,8 @@
 		{
 			"label": "Build (Debug)",
 			"type": "shell",
-			"command": "cd ${workspaceFolder}/src/assembler && lua assembler.lua -o test.val test.vallasm"
+			"command": "cd ${workspaceFolder}/src/assembler && lua assembler.lua -o firmware.val firmware.vallasm"
 		}
 	]
+	
 }
