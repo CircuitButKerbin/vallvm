@@ -79,3 +79,18 @@ end
 function isType(v, t)
 	return (type(v) == t) or ((type(v) == "table") and v.type == t)
 end
+
+---@param t table<any>
+---@param f fun(v: any): any
+function forEach(t, f)
+	local _t = {}
+	for k, v in pairs(t) do
+		_t[k] = f(v)
+	end
+	return _t
+end
+function compose(g,f)
+	return function(...)
+		return g(f(...))
+	end
+end

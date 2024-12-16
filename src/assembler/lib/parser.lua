@@ -179,7 +179,6 @@ end
 ---@return Instruction
 local function parseInstruction(s)
 	local opi, opj = s:find("^[%w%%]+")
-	print(s)
 	local operation = s:sub(opi, opj)
 	local operands = s:sub(opj+1, #s)
 	operation = operation:gsub("^%s*(.-)%s*$", "%1")
@@ -252,35 +251,27 @@ end
 
 ---@return table<ParsedLine>
 function ParseDirective(s, lineNumber)
+	print(s)
 	if (s:find("^%%luaCall")) then
 		local _, j = s:find("^[%w%%]+")
 		local args = parseOperands(s:sub(j+1, #s):gsub("^%s*(.-)%s*$", "%1"))
-		local rets = 0
+		local rets = table.remove(args, #args).value 
 		local expanded = {}
-		local fn = ""
+		local fn = table.remove(args, 1).value
 		prettyPrintTable(args)
 		for i, v in ipairs(args) do
-			if (i == #args) then
-				assert(v.type == "number", "Last argument must be a number")
-				rets = v.value
-				break
+			if (v.type == "string") then
+				expanded[#expanded+1] = parseLine(string.format("push \"%s\"", v.value), lineNumber)
 			end
-			if (i == 1) then
-				assert(v.type == "string" or v.type == "label", "First argument must be a string")
-				fn = v.value
-			else
-				if (v.type == "string") then
-					expanded[#expanded+1] = parseLine(string.format("push \"%s\"", v.value), lineNumber)
-				end
-				if (v.type == "number") then
-					expanded[#expanded+1] = parseLine(string.format("push %f", v.value), lineNumber)
-				end
-				if (v.type == "label") then
-					expanded[#expanded+1] = parseLine(string.format("push %s", v.value), lineNumber)
-				end
+			if (v.type == "number") then
+				expanded[#expanded+1] = parseLine(string.format("push %f", v.value), lineNumber)
+			end
+			if (v.type == "label") then
+				expanded[#expanded+1] = parseLine(string.format("push %s", v.value), lineNumber)
 			end
 		end
-		expanded[#expanded+1] = parseLine(string.format("invoke \"%s\", %d, %d", fn ,#args-1, rets), lineNumber)
+		prettyPrintTable(expanded)
+		expanded[#expanded+1] = parseLine(string.format("invoke \"%s\", %d, %d", fn ,#args, rets), lineNumber)
 		return expanded
 	end
 	error("Invalid directive")
@@ -315,6 +306,8 @@ local function parseVallASM (input, args)
 							parsed[#parsed+1] = v
 							emptyLabel = false
 							parsed[#parsed].labels = emptyLabels
+						else
+							parsed[#parsed+1] = v
 						end
 					else
 						parsed[#parsed+1] = v
@@ -338,11 +331,11 @@ local function parseVallASM (input, args)
 			end
 		end
 	end
+	--forEach(parsed, function(v) if (v.instruction) then v=v.instruction;printf("%03d: %s %s", v.lineDefined, v.name, table.concat(forEach(v.operands, function(v) return v.value end), ", "))  end end)
 	if (emptyLabel) then
 		printf("%s:%d \x1B[35mwarning:\x1B[0m empty label at EOF; label will be undefined!", args.filename, parsed[#parsed].labels[1].lineDefined)
 		parsed[#parsed].labels = {}
 	end
-	prettyPrintTable(parsed)
 	return parsed
 end
 

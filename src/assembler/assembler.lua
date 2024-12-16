@@ -36,6 +36,10 @@ local function assembleParsed(parsed)
 		chunks[#chunks+1] = chunk
 	end
 	local start = 0
+	if (#chunks == 1) then
+		print("Finished Chunk Compliation")
+		return chunks[1]
+	end
 	for chunkToResolve, v in ipairs(chunks) do
 		if (type(v) == "table" and (isType(v, "UnfinishedAssembly") or isType(v.assembly, "UnfinishedAssembly"))) then
 			local assembly = v;

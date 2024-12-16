@@ -5,33 +5,38 @@ fndef onDraw:
 	load "program"
 	invoke "len", 1, 1
 	push ""
-	pop "concated"
+	pop "formatted"
+	push 0 ; len , 0 (i)
+for:
+	load "formatted" ; //			 len, i , concated 
+	swap ; 			  			 len, concated, i
+	push 1 ; 		  			 len, concated, i, 1
+	add ; 			  			 len, concated, i+1
+	swap ; 			  			 len, i+1, concated
+	over  ; 		  			 len, i+1, concated, i+1
+	push "%02X" ; 	  			 len, i+1, concat, i+1, "%02X"
+	swap ; 		      			 len, i+1, concated, "%02X", i+1
+	load "program" ;  			 len, i+1, concated, "%02X", $"program"
+	swap ; 			  			 len, i+1, concated, "%02X", $"program", i+1
+	invoke "string.byte", 2, 1 ; len, i+1, concated, "%02X", $"program"[i+1]
+	invoke "string.format", 2, 1;len, i+1, concated, hex($"program"[i+1])
+	invoke "concat", 2, 1 ;      len, i+1, concated
+	pop "formatted" ; 	         len, i+1
+	over 			; 			 len, i+1, len
+	over ; length, index	     len, i+1, len, index
+	lt ; index < length          len, i+1, len<index
+	jcr for
 	push 0
-for:      ; len, concated, i
-	load "concated"
-	swap
-	push 1
-	add
-	swap 
-	over 
-	push "%02X" ; len, i+1, "", i+1, "%02X"
-	swap ; len, i+1, "", "%02X", i+1
-	load "program"
-	swap ; len, i+1, "", "%02X", $"program", i+1
-	invoke "string.byte", 2, 1 ; program:byte(i)
-	invoke "string.format", 2, 1
-	invoke "concat", 2, 1 ; len, i+1, concated
-	pop "formated" ; len, i+1
-	over ; length
-	over ; length, index
-	lt ; index < length
-	jcr for ; 
+	push 0
+	load "formatted"
+	invoke "screen.drawText", 3, 0
 	ret
 
 fndef init:
 	invoke "State", 0, 1
 	store "state"
+	bp
 	push "P"
-	invoke "rawget", 2, 1
+	invoke "get", 2, 1
 	pop "program"
 	ret
