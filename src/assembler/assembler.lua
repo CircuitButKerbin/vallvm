@@ -6,94 +6,58 @@ local exception = require("lib.error")
 require("lib.utilitys")
 ---returns a string with the type formatted with ANSI color codes;
 
-local assemblers = require("instructions")
+local instructionLib = require("lib.instructions")
 
+
+---comment
+---@param assembly table<string|unfinishedassembly|table>
+local function resolveLabels(assembly)
+	local meta, bin = {labels={},references={}}, ""
+	for i, v in ipairs(assembly) do
+		if (type(v) == "table") then prettyPrintTable(v) else print(formatprimative(v)) end
+		if (isType(v, "LabeledLine")) then
+			for _, label in ipairs(v.labels) do
+				meta.labels[label.name] = {offset=#bin, line=i}
+			end
+			bin = bin .. v.assembly
+		elseif (isType(v, "UnfinishedAssembly")) then
+			meta.references[v.referencedLabel] = {offset=#bin, line=i, is_relative=v.is_relative, asm=v.finish}
+			bin = bin .. v.placeholder
+		else
+			bin = bin .. v
+		end
+	end
+	return {assembly=bin, labels=meta.labels, references=meta.references}
+end
+
+local function assembleLabelReferences(program)
+	for k, v in pairs(program.references) do
+		local label = program.labels[k]
+		if (not label) then
+			Throw(exception.new("assembler.compiler.UnresolvedLabelException", string.format("Unresolved label %s", k)))
+		end
+		local offset, location, asm = label.offset, v.offset
+		if (v.is_relative) then
+			offset = offset - v.offset
+		end
+		asm = v.asm(offset)
+		program.assembly = program.assembly:sub(1, location) .. asm .. program.assembly:sub(location + #asm + 1, #program.assembly)
+	end
+	return program.assembly
+end
 ---@param parsed table<ParsedLine>
 local function assembleParsed(parsed)
 	local assembled = {}
 	for i, line in ipairs(parsed) do
 		---@type ParsedLine
 		line = line;
-		Assert(line.instruction, exception.new("assembler.compiler.AssemblyException", string.format("No instruction at line %d", line.lineDefined)))
-		local assembler = assemblers[line.instruction.name:lower()]
-		Assert(assembler, exception.new("assembler.compiler.AssemblyException", string.format("No assembler for instruction %s at line %d", line.instruction.name, line.lineDefined)))
-		Assert(line.instruction, exception.new("assembler.compiler.AssemblyException", string.format("Invalid Instruction at line %d", line.lineDefined)))
-		printf("\x1B[1AAssembling instruction %d/%d", i, #parsed)
-		assembled[#assembled+1] = #line.labels == 0 and assembler(line.instruction) or {assembly=assembler(line.instruction), labels=line.labels, type="LabeledLine"}
+		--#TODO refactor assembler stuffs
+		assembled[#assembled+1] = #line.labels == 0 and instructionLib.assembleInstruction(line.instruction) or {assembly=instructionLib.assembleInstruction(line.instruction), labels=line.labels, type="LabeledLine"}
 	end
-	local chunks = {}
-	local chunk = ""
-	for i, v in ipairs(assembled) do
-		if (type(v) == "string") then
-			chunk = chunk .. v
-		else
-			chunks[#chunks+1] = chunk
-			chunks[#chunks+1] = v
-			chunk = ""
-		end
-	end
-	if (#chunk > 0) then
-		chunks[#chunks+1] = chunk
-	end
-	local start = 0
-	if (#chunks == 1) then
-		print("Finished Chunk Compliation")
-		return chunks[1]
-	end
-	for chunkToResolve, v in ipairs(chunks) do
-		if (type(v) == "table" and (isType(v, "UnfinishedAssembly") or isType(v.assembly, "UnfinishedAssembly"))) then
-			local assembly = v;
-			if (isType(v.assembly, "UnfinishedAssembly")) then
-				assembly = v.assembly
-			end
-			local key = v.key
-			local found = false
-			local labelOffset = 0
-			for _, labelChunk in ipairs(chunks) do
-				if (isType(labelChunk, "LabeledLine")) then
-					for _, l in ipairs(labelChunk.labels) do
-						if (l.name == key) then
-							found = true
-							break
-						end
-					end
-					if (found) then
-						local jloc
-						if (v.unfinished:find("URELJ")) then
-							jloc = labelOffset - start
-						else
-							jloc = labelOffset
-						end
-						local asm = v.unfinished:sub(1, 1) .. "\x02".. string.pack("i4", jloc)
-						if (isType(v.assembly, "UnfinishedAssembly")) then
-							chunks[chunkToResolve].assembly = asm
-						else
-							chunks[chunkToResolve] = asm
-						end
-						break
-					end
-				end
-				labelOffset = labelOffset + (isType(labelChunk, "LabeledLine") and ((isType(labelChunk, "UnfinishedAssembly") and #labelChunk.assembly.unfinished) or #labelChunk.assembly) or ((isType(labelChunk, "UnfinishedAssembly") and #labelChunk.unfinished) or #labelChunk))
-			end
-			if (not found) then
-				Throw(exception.new("assembler.compiler.UnresolvedLabelException", string.format("Unresolved label %s", key)))
-			end
-		end
-		start = start +  (isType(v, "LabeledLine") and ((isType(v, "UnfinishedAssembly") and #v.assembly.unfinished) or #v.assembly) or ((isType(v, "UnfinishedAssembly") and #v.unfinished) or #v))
-	end
-	assembled = chunks
-	chunks = {}
+	print("Resolving Labels")
+	local pgm = assembleLabelReferences(resolveLabels(assembled))
 	print("Finished Resolving Labels")
-	--prettyPrintTable(assembled)
-	for i, v in ipairs(assembled) do
-		if (type(v) == "string" or (isType(v,"LabeledLine") and type(v.assembly) == "string")) then
-			chunk = chunk .. ((type(v) == "table" and v.assembly) or v)
-		else
-			Throw(exception.new("assembler.compiler.AssemblyException", string.format("Failed to resolve chunk %d (Missing label?)", i)))
-		end
-	end
-	print("Finished Chunk Recompilation")
-	return chunk
+	return pgm
 end
 --- Function for calling stuff when ran with --debug_test
 local function dbg()

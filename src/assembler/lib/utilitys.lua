@@ -81,11 +81,11 @@ function isType(v, t)
 end
 
 ---@param t table<any>
----@param f fun(v: any): any
+---@param f fun(k: any, v: any): any
 function forEach(t, f)
 	local _t = {}
 	for k, v in pairs(t) do
-		_t[k] = f(v)
+		_t[k] = f(k, v)
 	end
 	return _t
 end
