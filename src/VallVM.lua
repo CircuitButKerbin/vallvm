@@ -57,11 +57,13 @@ end
 ---comment
 ---@param ... any
 ---@return any, integer
-function unpack(...) 
+function unpack(...)
 	if (...)[1] == "t" then
-		-- unpack table
+		-- #TODO unpack table
+
 	elseif (...)[1] == "fn" then
-		-- unpack fn
+		-- #TODO unpack fn
+
 	else
 		return string.unpack(...)
 	end
@@ -189,7 +191,7 @@ _State = {
 	r = {},
 	tick = function (stk)
 		local op = stk.program:byte(stk.ip)
-		--print(string.format("[DEBUG] IP: %04X | OP: %02X [%s]", (stk.ip-1) & 0xFFFF, op or 0xDEAD, map[op] or "???"))
+		-- print(string.format("[DEBUG] IP: %04X | OP: %02X [%s]", (stk.ip-1) & 0xFFFF, op or 0xDEAD, map[op] or "???"))
 		--forEach(stk.stack, function(i, v) print(string.format("[DEBUG] \t | /\\ STACK[%d]: %s", i, type(v) == "string" and trinary(#v > 50, string.format("<%d Bytes>", #v), v) or v)) end)
 		--print("[DEBUG] \t |/")
 		local stack, program, nextip, data, write, yield = stk.stack, stk.program, 0, nil, nil, false
@@ -199,6 +201,8 @@ _State = {
 		elseif op == 2 then
 			nextip, write = writeDataType(program, stk.ip+1)
 			write(pop())
+		-- elseif op == 0x0B then
+		-- 	push(~pop())
 		elseif inRange(op, 3, 0x15) then
 			local a, b = pop(), pop()
 			nextip = stk.ip + 1
@@ -384,12 +388,10 @@ ENV = {
 	string = string,
 	screen = {
 		drawText = function (x, y, text)
-			--print(string.format("[DEBUG] drawText(%d, %d, %s)", x, y, text))
+			print(string.format("[DEBUG] drawText(%d, %d, %s)", x, y, text))
 		end,
 	}
 }
-
-
 
 
 Main()
