@@ -1,3 +1,6 @@
 [submodule "tools/VallTools"]
 	path = tools/VallTools
 	url = https://github.com/CircuitButKerbin/VallTools.git
+[submodule "tools/lsock"]
+	path = tools/lsock
+	url = https://github.com/CircuitButKerbin/lsock.git
