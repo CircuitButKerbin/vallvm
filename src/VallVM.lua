@@ -398,7 +398,7 @@ _State = {
 local stk = _State.stack
 ---@diagnostic disable-next-line
 pop, push, cut, pull, peek, swap, dupe, over = function()
-	assert(#stk == 0, "Stack underflow")
+	assert(#stk > 0, "Stack underflow")
 	local v = stk[#stk]
 	stk[#stk] = nil
 	return v
@@ -407,14 +407,14 @@ function(v)
 	stk[#stk+1] = v
 end,
 function(n)
-	assert(#stk >= n "Stack underflow")
+	assert(#stk >= n, "Stack will underflow")
 	for i=1, n do
 		stk[#stk] = nil
 	end
 end,
 function(n)
+	assert(#stk >= n, "Stack will underflow")
 	local t = {}
-	assert(#stk >= n, "Stack underflow")
 	for i=0, n-1 do
 		t[n-i] = stk[#stk]
 		stk[#stk] = nil
@@ -434,36 +434,20 @@ function()
 	stk[#stk+1] = stk[#stk-1]
 end
 --#endregion Stack_wrap
-Debug_breakpoints = {
-}
 
---#region DEBUG
 PausedByBP = false
----@param ip integer
----@return boolean next_bp
-function Debug_Check_BP(ip)
-	if Debug_breakpoints[ip] then
-		local bp = Debug_breakpoints[ip]
-		if type(bp) == "function" then -- conditonal breakpoint
-			return bp()
-		else -- regular breakpoint
-			return true
-		end
-	end
-	return false
-end
 
 function Debug__tick() 
-	if not PausedByBP and Debug_Check_BP(_State.ip) then
-		---#TODO: Emit BP event
-		print(string.format("Hit breakpoint @ %08x", _State.ip))
-		PausedByBP = true
-		return true
-	end
-	PausedByBP = false
 	local succ, msg = pcall(_State.tick, _State)
 	if not succ then
 		error(string.format("%08x | %s threw %s", _State.ip or 0xDEADBEEF, map[_State.program:byte(_State.ip)] or "???", msg))
+	elseif msg then
+		Status.debuggee.executionIndex = Status.debuggee.executionIndex + 1
+		if Status.debuggee.executionIndex > #Status.debuggee.executionList then
+			---#TODO signal program end
+		end
+		local _, nextfn = _State.program:find("\x2A\x08" .. Status.debuggee.executionList[Status.debuggee.executionIndex] .. "\0")
+		_State.ip = nextfn + 1
 	end
 	return false
 end
@@ -495,7 +479,7 @@ function DebugMain()
 			command='initialize',
 			request_seq=req.seq,
 			body = {
-				supportsConfigurationDoneRequest	  = true,
+				-- supportsConfigurationDoneRequest	  = true,
 				supportsFunctionBreakpoints			  = true,
 				supportsConditionalBreakpoints		  = true,
 				-- supportsHitConditionalBreakpoints	  = true,
@@ -536,7 +520,25 @@ function DebugMain()
 				-- supportsExceptionFilterOptions		  = true,
 				supportsSingleThreadExecutionRequests = true,
 				supportsDataBreakpointBytes			  = true,
-				--breakpointModes						  = {},
+				breakpointModes						  = {
+					{
+						mode = "0",
+						label = "Normal",
+						description = "Breakpoint by Source-mapped address",
+						appliesTo = {
+							'source'
+						}
+					},
+					{
+						mode = "1",
+						label = "Address",
+						description = "Breakpoint by Address",
+						appliesTo = {
+							'source',
+							'instruction'
+						}
+					}
+				},
 				supportsANSIStyling					  = true,		
 			}
 		}
@@ -552,11 +554,14 @@ function DebugMain()
 			binary = "",
 			binaryPath = "",
 			hasSymbols = false,
-			symbols = {},
+			symbolToLine = {},
+			symbolsLinetoAddr = {},
 			symbolsPath = "",
 			exceptionInfo = {},
 			pausedOnException = false,
-			state = "stopped"
+			pausedOnBreakpoint = false,
+			state = "stopped",
+			breakpoints = {}
 		}
 	}
 
@@ -574,6 +579,7 @@ function DebugMain()
 
 	---@type DAPRequestCallback
 	local function launchRequestCallback(req)
+		---#TODO get main target
 		if Status.launched then
 			---@type DAP_ErrorResponse
 			return {
@@ -626,14 +632,16 @@ function DebugMain()
 				Status.debuggee.hasSymbols = false
 			else
 				DAPProvider.Log(string.format("Found VDB for target @ \'%s\'", vdb))
-				local maps = {}
+				local mapToLine, mapToAddress = {}, {}
 				for l in FILE:lines() do
 					local n, a = l:match("([a-zA-Z0-9]+)@([a-fA-F0-9]+)")
-					maps[tonumber(a, 16) + 1] = tonumber(n)
+					mapToLine[tonumber(a, 16) + 1] = tonumber(n)
+					mapToAddress[tonumber(n)] = tonumber(a, 16) + 1
 				end
-				DAPProvider.Log(string.format("Loaded %d symbols", #maps))
+				DAPProvider.Log(string.format("Loaded %d symbolToLine", #mapToLine))
 				Status.debuggee.hasSymbols = true
-				Status.debuggee.symbols = maps
+				Status.debuggee.symbolToLine = mapToLine
+				Status.debuggee.symbolToAddr = mapToAddress
 				Status.debuggee.symbolsPath = vdb
 			end
 			-- find binary
@@ -660,6 +668,12 @@ function DebugMain()
 		_, _State.ip = _State.program:find(string.format("\x2A\x08%s", req.arguments.entry or 'init') .. '\0')
 		_State.ip = _State.ip + 1
 		DAPProvider.Log(string.format("Launched target: Entry @ %08x", _State.ip))
+		Status.debuggee.executionList = {
+			"init",
+			"onTick",
+			"onDraw"
+		}
+		Status.debuggee.executionIndex = 1
 		session:emitEvent(
 			---@type DAP_Event
 			{
@@ -728,19 +742,19 @@ function DebugMain()
 				scopes = {
 					{
 						name="Globals",
-						variablesReference=0,
+						variablesReference=1,
 						namedVariables=#_State.g,
 						expensive=false,
 						--source
 					},
 					{
 						name="Registers",
-						variablesReference=1,
+						variablesReference=2,
 						indexedVariables=#_State.r
 					},
 					{
 						name="Stack",
-						variablesReference=2,
+						variablesReference=3,
 						indexedVariables=#_State.stack
 					}
 				}
@@ -748,35 +762,74 @@ function DebugMain()
 			request_seq=req.seq
 		}
 	end
+	local function formatVariable(v)
+		if type(v) == "string" then
+			if (v:match('[^ -~]')) then
+				local sanitized, previousBinary = "", false
+				for i=1, #v do
+					local r = (i == 1) and ("") or ("\\x1B[0m")
+					if (string.char(v:byte(i)):match('[^ -~]')) then
+						sanitized = sanitized .. string.format("\\x%02X", v:byte(i));
+					else
+						sanitized = sanitized .. string.char(v:byte(i));
+					end
+				end
+				return (sanitized .. "\\x1B[0m"):gsub("\\", "\\\\")
+			else
+				return v
+			end
+		else
+			return tostring(v)
+		end
+	end
 
 	---@type DAPRequestCallback
 	local function variablesRequestCallback(req)
 		local variables = {}
-		if req.arguments.variablesReference == 0 then
+		if req.arguments.variablesReference == 1 then
 			for k, v in pairs(_State.g) do
 				variables[#variables+1] = {
 					name=k,
-					value=tostring(v),
-					variablesReference=0
+					value=formatVariable(v),
+					variablesReference=0,
+					presentationHint = {
+						kind = "data",
+					}
 				}
+				if (type(v) == "string") then
+					variables[#variables].presentationHint["attributes"] = {"rawString"}
+				end
 			end
-		elseif req.arguments.variablesReference == 1 then
+		elseif req.arguments.variablesReference == 2 then
 			for k, v in pairs(_State.r) do
 				variables[#variables+1] = {
 					name=k,
-					value=tostring(v),
-					variablesReference=0
+					value=formatVariable(v),
+					variablesReference=0,
+					presentationHint = {
+						kind = "data",
+					}
 				}
+				if (type(v) == "string") then
+					variables[#variables].presentationHint["attributes"] = {"rawString"}
+				end
 			end
-		elseif req.arguments.variablesReference == 2 then
+		elseif req.arguments.variablesReference == 3 then
 			for i=1, #_State.stack do
 				variables[#variables+1] = {
 					name=string.format("Stack[%d]", i),
-					value=tostring(_State.stack[i]),
-					variablesReference=0
+					value=formatVariable(_State.stack[i]),
+					variablesReference=0,
+					presentationHint = {
+						kind = "data",
+					}
 				}
+				if (type(_State.stack[i]) == "string") then
+					variables[#variables].presentationHint["attributes"] = {"rawString"}
+				end
 			end
 		end
+		prettyPrintTable(variables)
 		---@type DAP_Response
 		return {
 			type='response',
@@ -829,8 +882,8 @@ function DebugMain()
 			totalFrames = 1,
 		}
 		if Status.debuggee.hasSource and Status.debuggee.hasSymbols then
-			body.stackFrames[1].line = Status.debuggee.symbols[_State.ip] or 0
-			if not Status.debuggee.symbols[_State.ip] then
+			body.stackFrames[1].line = Status.debuggee.symbolToLine[_State.ip] or 0
+			if not Status.debuggee.symbolToLine[_State.ip] then
 				DAPProvider.Log(string.format("Could not find symbol for %08x", _State.ip), 1)
 			end
 			body.stackFrames[1].source = {
@@ -850,6 +903,7 @@ function DebugMain()
 		}
 	end
 
+	---@type DAPRequestCallback
 	local function threadsRequestCallback(req)
 		---@type DAP_Response
 		return {
@@ -869,6 +923,7 @@ function DebugMain()
 		}
 	end
 
+	---@type DAPRequestCallback
 	local function terminateRequestCallback(req)
 		---@type DAP_Response
 		return {
@@ -879,6 +934,8 @@ function DebugMain()
 			request_seq=req.seq,
 		}
 	end
+	
+	---@type DAPRequestCallback
 	local function disconnectRequestCallback(req)
 		---@type DAP_Response
 		return {
@@ -889,6 +946,7 @@ function DebugMain()
 			request_seq=req.seq,
 		}
 	end
+
 	local function wompHandler()
 		session:emitEvent(
 			---@type DAP_Event
@@ -912,6 +970,8 @@ function DebugMain()
 		DAPProvider.Log("Target exited with code -1073741819")
 		session:close()
 	end
+
+	---@type DAPRequestCallback
 	local function nextRequestCallback(req)
 		if Status.debuggee.pausedOnException then
 			wompHandler()
@@ -992,6 +1052,7 @@ function DebugMain()
 			}
 		end
 	end
+
 	---@type DAPRequestCallback
 	local function continueRequestCallback(req)
 		if Status.debuggee.pausedOnException then
@@ -1012,6 +1073,93 @@ function DebugMain()
 		error("unreachable")
 	end
 	
+	---@type DAPRequestCallback
+	local function pauseRequestCallback(req)
+		Status.debuggee.state = "paused"
+		session:emitEvent(
+			---@type DAP_Event
+			{
+				type='event',
+				event='stopped',
+				seq=0,
+				body = {
+					reason='pause',
+					threadId = 1,
+					description= "Paused on user request.",
+					allThreadsStopped=true
+				}
+			}
+		)
+		---@type DAP_Response
+		return {
+			type='response',
+			seq=0,
+			success=true,
+			command='pause',
+			request_seq=req.seq,
+		}
+	end
+	
+	---@type DAPRequestCallback
+	local function setBreakpointsRequestCallback(req)
+		local responseBPs = {}
+		for _, bp in ipairs(req.arguments.breakpoints) do
+			if Status.debuggee.symbolToAddr[bp.line] then
+				local id = math.random(0, 65565)
+				local bp = {
+					id = id,
+					verified = true,
+					--message
+					source = {
+						name = Status.debuggee.name,
+						path = Status.debuggee.sourcePath
+					},
+					line = bp.line,
+					instructionReference = string.format("0x%08X", Status.debuggee.symbolToAddr[bp.line])
+				}
+				DAPProvider.Log(string.format("Created SourceBreakpoint: %d -> %08x", bp.line, Status.debuggee.symbolToAddr[bp.line]))
+				Status.debuggee.breakpoints[Status.debuggee.symbolToAddr[bp.line]] = bp
+				responseBPs[#responseBPs+1] = bp
+			else
+				DAPProvider.Log(string.format("Could not create SourceBreakpoint: Unable to map line %d to address", bp.line), 1)
+				---#TODO: handle
+			end
+		end
+		---@type DAP_Response
+		return {
+			type='response',
+			seq=0,
+			success=true,
+			command='setBreakpoints',
+			request_seq=req.seq,
+			body = {
+				breakpoints = responseBPs
+			}
+		}
+	end
+
+	---@type DAPRequestCallback
+	local function breakpointLocationsRequestCallback(req)
+		local breakpointLocations = {}
+		for i=req.arguments.line, req.arguments.endLine or req.arguments.line do
+			if Status.debuggee.symbolToAddr[i] then
+				breakpointLocations[#breakpointLocations+1] = {
+					line = i,
+				}
+			end
+		end
+		---@type DAP_Response
+		return {
+			type='response',
+			seq=0,
+			success=true,
+			command='breakpointLocations',
+			request_seq=req.seq,
+			body = {
+				breakpoints = breakpointLocations
+			}
+		}
+	end
 	session:registerRequestCallback('initialize', initializeRequestCallback)
 	session:registerRequestCallback('launch', launchRequestCallback)
 	session:registerRequestCallback('configurationDone', configurationDoneRequestCallback)
@@ -1025,11 +1173,19 @@ function DebugMain()
 	session:registerRequestCallback('disconnect', disconnectRequestCallback)
 	session:registerRequestCallback('next', nextRequestCallback)
 	session:registerRequestCallback('continue', continueRequestCallback)
+	session:registerRequestCallback('pause', pauseRequestCallback)
 	session:registerRequestCallback('exceptionInfo', exceptionInfoRequestCallback)
+	session:registerRequestCallback('setBreakpoints', setBreakpointsRequestCallback)
+	session:registerRequestCallback('breakpointLocations', breakpointLocationsRequestCallback)
+
+
 	while session:update() do
 		if Status.debuggee.state == "running" then
-			local stepped, msg = pcall(Debug_step)
-			if not stepped then
+			if Status.debuggee.pausedOnException then
+				wompHandler()
+			end
+
+			if Status.debuggee.breakpoints[_State.ip] then
 				Status.debuggee.state = "stopped"
 				session:emitEvent(
 					---@type DAP_Event
@@ -1038,19 +1194,39 @@ function DebugMain()
 						event='stopped',
 						seq=0,
 						body = {
-							reason='exception',
+							reason='breakpoint',
 							threadId = 1,
-							description= "Paused on exceoption.",
+							description= "Paused on breakpoint.",
 							allThreadsStopped=true
 						}
 					}
 				)
-				Status.debuggee.pausedOnException = true
-				Status.debuggee.exceptionInfo = {
-					exceptionId = msg,
-					description = msg,
-					breakMode = "always"
-				}
+				Status.debuggee.pausedOnBreakpoint = true
+			else
+				local stepped, msg = pcall(Debug_step)
+				if not stepped then
+					Status.debuggee.state = "stopped"
+					session:emitEvent(
+						---@type DAP_Event
+						{
+							type='event',
+							event='stopped',
+							seq=0,
+							body = {
+								reason='exception',
+								threadId = 1,
+								description= "Paused on exceoption.",
+								allThreadsStopped=true
+							}
+						}
+					)
+					Status.debuggee.pausedOnException = true
+					Status.debuggee.exceptionInfo = {
+						exceptionId = msg,
+						description = msg,
+						breakMode = "always"
+					}
+				end
 			end
 		end
 	end
